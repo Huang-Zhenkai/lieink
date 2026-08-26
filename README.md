@@ -1,5 +1,4 @@
-
-readme_content = """# 🖋️ lieink
+# 🖋️ lieink
 
 > **写李群公式像写情书一样丝滑，debug 像查作业一样无痛。**
 
