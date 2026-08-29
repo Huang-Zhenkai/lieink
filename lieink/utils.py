@@ -56,6 +56,24 @@ def check_equal(
 
 
 @beartype
+def check_symmetry(x: NDArray, tol: RealScalar = ATOL) -> NDArray | Literal[False]:
+    if np.allclose(x, x.T, atol=float(tol)):
+        return x
+    else:
+        return False
+
+
+@beartype
+def check_symmetryb(
+    x: NDArray_3D, tol: RealScalar = ATOL
+) -> NDArray_3D | Literal[False]:
+    if np.allclose(x, x.transpose(0, 2, 1), atol=float(tol)):
+        return x
+    else:
+        return False
+
+
+@beartype
 def find_zeros(x: NDArray, tol: RealScalar = ATOL) -> NDArrayBool:
 
     mask = np.isclose(x, 0, atol=float(tol))

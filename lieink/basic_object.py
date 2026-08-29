@@ -25,7 +25,7 @@ from beartype import beartype
 from rich import print
 from rich.pretty import pprint
 
-import lieink.utils as utils
+from lieink import utils
 from lieink.annotations import (
     NDArray,
     NDArray_1D,
@@ -207,7 +207,10 @@ class BasicLie[
     def _matmul_impl(
         self, self_v: NDArray, other_v: NDArray, return_type: type
     ) -> BasicLie[Any, Any, Any, Any]:
-        new_v = self_v @ other_v @ self.invc(self_v, skip_check=True)  # type: ignore
+        if utils.check_symmetry(other_v) is not False:
+            new_v = self_v @ other_v @ self_v.T
+        else:
+            new_v = self_v @ other_v @ self.invc(self_v, skip_check=True)  # type: ignore
         return return_type(new_v)
 
     @property
@@ -491,7 +494,10 @@ class BasicLie[
             )
 
         v1, v2 = cls._repeat(v1, v2)
-        v1_inv = np.linalg.inv(v1)
+        if utils.check_symmetryb(v2) is not False:
+            v1_inv = v1.transpose(0, 2, 1)
+        else:
+            v1_inv = np.linalg.inv(v1)
 
         return v1 @ v2 @ v1_inv
 

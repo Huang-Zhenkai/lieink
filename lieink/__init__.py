@@ -1,5 +1,5 @@
 from . import registry_for_atoms, registry_for_containers  # type: ignore
-from .annotations import ( 
+from .annotations import (
     get_NDArrayAnnotation,  # type: ignore
     get_NDArrayAnnotationShape,  # type: ignore
 )
