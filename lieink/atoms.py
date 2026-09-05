@@ -5,7 +5,7 @@ from typing import Any, Literal, Self, cast
 import numpy as np
 from beartype import beartype
 
-import lieink.utils as utils
+from lieink import utils
 from lieink.annotations import (
     NDArray_1D,
     NDArray_3,
@@ -28,14 +28,14 @@ from lieink.annotations import (
     NDArray_N_6_6,
     RealScalar,
 )
-from lieink.basic_object import BasicLie as _BasicLie
-from lieink.basic_object import BasicPoint as _BasicPoint
-from lieink.basic_object import BasicVector as _BasicVector
-from lieink.basic_object import Lie
-from lieink.basic_object import LieAlgebra as _LieAlgebra
-from lieink.basic_object import LieAlgebra3 as _LieAlgebra3
-from lieink.basic_object import LieGroup as _LieGroup
-from lieink.basic_object import LieGroup3 as _LieGroup3
+from lieink.basic_atoms import BasicLie as _BasicLie
+from lieink.basic_atoms import BasicPoint as _BasicPoint
+from lieink.basic_atoms import BasicVector as _BasicVector
+from lieink.basic_atoms import Lie
+from lieink.basic_atoms import LieAlgebra as _LieAlgebra
+from lieink.basic_atoms import LieAlgebra3 as _LieAlgebra3
+from lieink.basic_atoms import LieGroup as _LieGroup
+from lieink.basic_atoms import LieGroup3 as _LieGroup3
 
 
 @beartype

@@ -7,11 +7,11 @@ import numpy as np
 from beartype import beartype
 from scipy.linalg import block_diag  # type: ignore
 
-import lieink.utils as utils
+from lieink import utils
 from lieink.annotations import NDArray, NDArray_2D, NDArray_3D
-from lieink.basic_object import BasicContainer as _BasicContainer
-from lieink.basic_object import BasicLie as _BasicLie
-from lieink.basic_object import Lie
+from lieink.basic_atoms import BasicLie as _BasicLie
+from lieink.basic_atoms import Lie
+from lieink.basic_containers import BasicContainer as _BasicContainer
 
 
 @beartype
