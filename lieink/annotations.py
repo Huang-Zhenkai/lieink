@@ -35,24 +35,41 @@ NDArray_4_4 = Num[NDArray, "4 4"]
 NDArray_6_6 = Num[NDArray, "6 6"]
 
 NDArray_N_3_1 = Num[NDArray, "N 3 1"]
+NDArray_N_M_3_1 = Num[NDArray, "N M 3 1"]
 
 NDArray_N_3 = Num[NDArray, "N 3"]
+NDArray_N_M_3 = Num[NDArray, "N M 3"]
+
 NDArray_N_4_1 = Num[NDArray, "N 4 1"]
+NDArray_N_M_4_1 = Num[NDArray, "N M 4 1"]
 
 NDArray_N_4 = Num[NDArray, "N 4"]
+NDArray_N_M_4 = Num[NDArray, "N M 4"]
+
 NDArray_N_6_1 = Num[NDArray, "N 6 1"]
+NDArray_N_M_6_1 = Num[NDArray, "N M 6 1"]
+
 NDArray_N_6 = Num[NDArray, "N 6"]
+NDArray_N_M_6 = Num[NDArray, "N M 6"]
 
 NDArray_N_3_3 = Num[NDArray, "N 3 3"]
+NDArray_N_M_3_3 = Num[NDArray, "N M 3 3"]
 
 NDArray_N_4_4 = Num[NDArray, "N 4 4"]
+NDArray_N_M_4_4 = Num[NDArray, "N M 4 4"]
 
 NDArray_N_6_6 = Num[NDArray, "N 6 6"]
+NDArray_N_M_6_6 = Num[NDArray, "N M 6 6"]
 
 
 NDArray_3_N = Num[NDArray, "3 N"]
+NDArray_N_3_M = Num[NDArray, "N 3 M"]
+
 NDArray_4_N = Num[NDArray, "4 N"]
+NDArray_N_4_M = Num[NDArray, "N 4 M"]
+
 NDArray_6_N = Num[NDArray, "6 N"]
+NDArray_N_6_M = Num[NDArray, "N 6 M"]
 
 
 @beartype

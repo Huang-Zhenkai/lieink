@@ -503,6 +503,11 @@ class BasicLie[
         v = self._check_assigned()
         return Lie(v.T)
 
+    @property
+    def inv(self) -> Lie:
+        v = self._check_assigned()
+        return Lie(np.linalg.inv(v))
+
 
 @beartype
 class Lie(
@@ -1185,6 +1190,118 @@ class LieAlgebra3[
 
         return Twist3(self.toTwist3c(v, skip_check=True))
 
+    @classmethod
+    def _left_jacobian_basec(cls, skew3_v: NDArray_3_3) -> NDArray_3_3:
+        intensity = np.sum(skew3_v**2 / 2) ** 0.5
+        if utils.check_equal(intensity, 0) is False:
+            return (
+                np.eye(3)
+                + (1 - np.cos(intensity)) / intensity**2 * skew3_v
+                + (intensity - np.sin(intensity)) / intensity**3 * skew3_v @ skew3_v
+            )
+        else:
+            return np.eye(3)
+
+    @classmethod
+    def _left_jacobian_basecb(cls, skew_vb: NDArray_N_3_3) -> NDArray_N_3_3:
+        from lieink.atoms import so3
+
+        intensityb = so3.intensitycb(skew_vb, skip_check=True)
+        mask = utils.find_zeros(intensityb)
+        mask_ = np.logical_not(mask)
+        left_jacobianb = np.zeros(skew_vb.shape)
+        left_jacobianb[mask] = np.eye(3)
+
+        intensityb = intensityb[mask_][:, None, None]
+        skew_vb = skew_vb[mask_]
+
+        left_jacobianb[mask_] = (
+            np.eye(3)
+            + (1 - np.cos(intensityb)) / intensityb**2 * skew_vb
+            + (intensityb - np.sin(intensityb)) / intensityb**3 * skew_vb @ skew_vb
+        )
+
+        return left_jacobianb
+
+    @classmethod
+    def left_jacobianc(
+        cls, v: allowed_input_type_single, skip_check: bool = False
+    ) -> NDArray_3_3:
+        v = cls._check_shape_and_value(v, skip_check=skip_check)
+        if v.shape[1] == 1:
+            return cls._left_jacobian_basec(utils.skew3(v))
+        return cls._left_jacobian_basecb(v)
+
+    @classmethod
+    def left_jacobiancb(
+        cls, v: allowed_input_type_batch, skip_check: bool = False
+    ) -> NDArray_N_3_3:
+        v = cls._check_shapeb_and_valueb(v, skip_check=skip_check)
+        if v.shape[2] == 1:
+            return cls._left_jacobian_basec(utils.skew3b(v))
+        return cls._left_jacobian_basecb(v)
+
+    @property
+    def left_jacobian(self) -> Lie:
+        v = self._check_assigned()
+        return Lie(self.left_jacobianc(v, skip_check=True))
+
+    @classmethod
+    def _right_jacobian_basec(cls, skew3_v: NDArray_3_3) -> NDArray_3_3:
+        intensity = np.sum(skew3_v**2 / 2) ** 0.5
+        if utils.check_equal(intensity, 0) is False:
+            return (
+                np.eye(3)
+                - (1 - np.cos(intensity)) / intensity**2 * skew3_v
+                + (intensity - np.sin(intensity)) / intensity**3 * skew3_v @ skew3_v
+            )
+        else:
+            return np.eye(3)
+
+    @classmethod
+    def _right_jacobian_basecb(cls, skew_vb: NDArray_N_3_3) -> NDArray_N_3_3:
+        from lieink.atoms import so3
+
+        intensityb = so3.intensitycb(skew_vb, skip_check=True)
+        mask = utils.find_zeros(intensityb)
+        mask_ = np.logical_not(mask)
+        right_jacobianb = np.zeros(skew_vb.shape)
+        right_jacobianb[mask] = np.eye(3)
+
+        intensityb = intensityb[mask_][:, None, None]
+        skew_vb = skew_vb[mask_]
+
+        right_jacobianb[mask_] = (
+            np.eye(3)
+            - (1 - np.cos(intensityb)) / intensityb**2 * skew_vb
+            + (intensityb - np.sin(intensityb)) / intensityb**3 * skew_vb @ skew_vb
+        )
+
+        return right_jacobianb
+
+    @classmethod
+    def right_jacobianc(
+        cls, v: allowed_input_type_single, skip_check: bool = False
+    ) -> NDArray_3_3:
+        v = cls._check_shape_and_value(v, skip_check=skip_check)
+        if v.shape[1] == 1:
+            return cls._right_jacobian_basec(utils.skew3(v))
+        return cls._right_jacobian_basecb(v)
+
+    @classmethod
+    def right_jacobiancb(
+        cls, v: allowed_input_type_batch, skip_check: bool = False
+    ) -> NDArray_N_3_3:
+        v = cls._check_shapeb_and_valueb(v, skip_check=skip_check)
+        if v.shape[2] == 1:
+            return cls._right_jacobian_basec(utils.skew3b(v))
+        return cls._right_jacobian_basecb(v)
+
+    @property
+    def right_jacobian(self) -> Lie:
+        v = self._check_assigned()
+        return Lie(self.right_jacobianc(v, skip_check=True))
+
 
 class LieAlgebra[
     allowed_input_type_single: NDArray,
@@ -1695,9 +1812,7 @@ class LieAlgebra[
         cls,
         angular_part: NDArray_3_3 | NDArray_3_1 | NDArray_3,
         linear_part: NDArray_3_3 | NDArray_3_1 | NDArray_3 | NDArray_4_1 | NDArray_4,
-        se3_or_Twist_or_Wrench_or_ad_or_coad: Literal[
-            "se3", "Twist", "Wrench", "ad", "coad"
-        ] = "se3",
+        combineto: Literal["se3", "Twist", "Wrench", "ad", "coad"] = "se3",
         skip_check: bool = False,
     ) -> NDArray_4_4 | NDArray_6_1 | NDArray_6_6:
 
@@ -1730,18 +1845,15 @@ class LieAlgebra[
             vee3_linear_part = linear_part
             skew3_linear_part = utils.skew3(vee3_linear_part)
 
-        if se3_or_Twist_or_Wrench_or_ad_or_coad == "se3":
+        if combineto == "se3":
             v = np.zeros((4, 4))
             v[:3, :3] = skew3_angular_part
             v[:3, 3:] = vee3_linear_part
-        elif (
-            se3_or_Twist_or_Wrench_or_ad_or_coad == "Twist"
-            or se3_or_Twist_or_Wrench_or_ad_or_coad == "Wrench"
-        ):
+        elif combineto == "Twist" or combineto == "Wrench":
             v = np.zeros((6, 1))
             v[:3] = vee3_angular_part
             v[3:] = vee3_linear_part
-        elif se3_or_Twist_or_Wrench_or_ad_or_coad == "ad":
+        elif combineto == "ad":
             v = np.zeros((6, 6))
             v[:3, :3] = skew3_angular_part
             v[3:, 3:] = skew3_angular_part
@@ -1763,9 +1875,7 @@ class LieAlgebra[
         | NDArray_3_N
         | NDArray_N_4_1
         | NDArray_4_N,
-        se3_or_Twist_or_Wrench_or_ad_or_coad: Literal[
-            "se3", "Twist", "Wrench", "ad", "coad"
-        ] = "se3",
+        combineto: Literal["se3", "Twist", "Wrench", "ad", "coad"] = "se3",
         skip_check: bool = False,
     ) -> NDArray_N_4_4 | NDArray_N_6_1 | NDArray_N_6_6:
 
@@ -1813,18 +1923,15 @@ class LieAlgebra[
                 "skew3_angular_partb and skew3_linear_partb must have same num."
             )
 
-        if se3_or_Twist_or_Wrench_or_ad_or_coad == "se3":
+        if combineto == "se3":
             v = np.zeros((num, 4, 4))
             v[:, :3, :3] = skew3_angular_partb
             v[:, :3, 3:] = vee3_linear_partb
-        elif (
-            se3_or_Twist_or_Wrench_or_ad_or_coad == "Twist"
-            or se3_or_Twist_or_Wrench_or_ad_or_coad == "Wrench"
-        ):
+        elif combineto == "Twist" or combineto == "Wrench":
             v = np.zeros((num, 6, 1))
             v[:, :3] = vee3_angular_partb
             v[:, 3:] = vee3_linear_partb
-        elif se3_or_Twist_or_Wrench_or_ad_or_coad == "ad":
+        elif combineto == "ad":
             v = np.zeros((num, 6, 6))
             v[:, :3, :3] = skew3_angular_partb
             v[:, 3:, 3:] = skew3_angular_partb
@@ -1980,6 +2087,176 @@ class LieAlgebra[
         from lieink.atoms import coad
 
         return coad(self.tocoadc(self_v, skip_check=True))
+
+    @classmethod
+    def _left_jacobian_basec(
+        cls, angular_part: NDArray_3_3, linear_part3: NDArray_3_1
+    ) -> NDArray_6_6:
+
+        intensity = np.sum(angular_part**2 / 2) ** 0.5
+        left_jacobian = np.eye(6)
+        if utils.check_equal(intensity, 0) is not False:
+            left_jacobian[3:, :3] = 0.5 * utils.skew3(linear_part3)
+        else:
+            ad_v = cls._combine_basec(angular_part, linear_part3, "ad", skip_check=True)
+            ad_v2 = ad_v @ ad_v
+            ad_v3 = ad_v @ ad_v2
+            ad_v4 = ad_v @ ad_v3
+            c1 = (4 - intensity * np.sin(intensity) - 4 * np.cos(intensity)) / (
+                2 * intensity**2
+            )
+            c2 = (
+                4 * intensity - 5 * np.sin(intensity) + intensity * np.cos(intensity)
+            ) / (2 * intensity**3)
+            c3 = (2 - intensity * np.sin(intensity) - 2 * np.cos(intensity)) / (
+                2 * intensity**4
+            )
+            c4 = (
+                2 * intensity - 3 * np.sin(intensity) + intensity * np.cos(intensity)
+            ) / (2 * intensity**5)
+            left_jacobian += c1 * ad_v + c2 * ad_v2 + c3 * ad_v3 + c4 * ad_v4
+        return left_jacobian
+
+    @classmethod
+    def _left_jacobian_basecb(
+        cls, angular_partb: NDArray_N_3_3, linear_part3b: NDArray_N_3_1
+    ):
+        from lieink.atoms import so3
+
+        intensity = so3.intensitycb(angular_partb)
+        mask = utils.find_zeros(intensity)
+        mask_ = np.logical_not(mask)
+
+        left_jacobianb = np.zeros((angular_partb.shape[0], 6, 6))
+        left_jacobianb[:] = np.eye(6)
+        left_jacobianb[mask, 3:, :3] = 0.5 * utils.skew3b(linear_part3b[mask])
+        intensity = intensity[mask_].reshape(-1, 1, 1)
+        ad_v = cls._combine_basecb(angular_partb[mask_], linear_part3b[mask_], "ad")
+        ad_v2 = ad_v @ ad_v
+        ad_v3 = ad_v @ ad_v2
+        ad_v4 = ad_v @ ad_v3
+        c1 = (4 - intensity * np.sin(intensity) - 4 * np.cos(intensity)) / (
+            2 * intensity**2
+        )
+        c2 = (4 * intensity - 5 * np.sin(intensity) + intensity * np.cos(intensity)) / (
+            2 * intensity**3
+        )
+        c3 = (2 - intensity * np.sin(intensity) - 2 * np.cos(intensity)) / (
+            2 * intensity**4
+        )
+        c4 = (2 * intensity - 3 * np.sin(intensity) + intensity * np.cos(intensity)) / (
+            2 * intensity**5
+        )
+        left_jacobianb[mask_] += c1 * ad_v + c2 * ad_v2 + c3 * ad_v3 + c4 * ad_v4
+        return left_jacobianb
+
+    @classmethod
+    def left_jacobianc(
+        cls, v: allowed_input_type_single, skip_check: bool = False
+    ) -> NDArray_6_6:
+        v = cls._check_shape_and_value(v, skip_check=skip_check)
+        angular_part = cls.angular_part_skewc(v, skip_check=True)
+        linear_part = cls.linear_part3c(v, skip_check=True)
+        return cls._left_jacobian_basec(angular_part, linear_part)
+
+    @classmethod
+    def left_jacobiancb(
+        cls, v: allowed_input_type_batch, skip_check: bool = False
+    ) -> NDArray_N_6_6:
+        v = cls._check_shapeb_and_valueb(v, skip_check=skip_check)
+        angular_part = cls.angular_part_skewcb(v, skip_check=True)
+        linear_part = cls.linear_part3cb(v, skip_check=True)
+        return cls._left_jacobian_basecb(angular_part, linear_part)
+
+    @property
+    def left_jacobian(self) -> Lie:
+        self_v = self._check_assigned()
+        return Lie(self.left_jacobianc(self_v, skip_check=True))
+
+    @classmethod
+    def _right_jacobian_basec(
+        cls, angular_part: NDArray_3_3, linear_part3: NDArray_3_1
+    ) -> NDArray_6_6:
+
+        intensity = np.sum(angular_part**2 / 2) ** 0.5
+        right_jacobian = np.eye(6)
+        if utils.check_equal(intensity, 0) is not False:
+            right_jacobian[3:, :3] = -0.5 * utils.skew3(linear_part3)
+        else:
+            ad_v = cls._combine_basec(angular_part, linear_part3, "ad", skip_check=True)
+            ad_v2 = ad_v @ ad_v
+            ad_v3 = ad_v2 @ ad_v
+            ad_v4 = ad_v2 @ ad_v2
+            c1 = (4 - intensity * np.sin(intensity) - 4 * np.cos(intensity)) / (
+                2 * intensity**2
+            )
+            c2 = (
+                4 * intensity - 5 * np.sin(intensity) + intensity * np.cos(intensity)
+            ) / (2 * intensity**3)
+            c3 = (2 - intensity * np.sin(intensity) - 2 * np.cos(intensity)) / (
+                2 * intensity**4
+            )
+            c4 = (
+                2 * intensity - 3 * np.sin(intensity) + intensity * np.cos(intensity)
+            ) / (2 * intensity**5)
+            right_jacobian += -c1 * ad_v + c2 * ad_v2 - c3 * ad_v3 + c4 * ad_v4
+        return right_jacobian
+
+    @classmethod
+    def _right_jacobian_basecb(
+        cls, angular_partb: NDArray_N_3_3, linear_part3b: NDArray_N_3_1
+    ):
+        from lieink.atoms import so3
+
+        intensity = so3.intensitycb(angular_partb)
+        mask = utils.find_zeros(intensity)
+        mask_ = np.logical_not(mask)
+
+        right_jacobianb = np.zeros((angular_partb.shape[0], 6, 6))
+        right_jacobianb[:] = np.eye(6)
+        right_jacobianb[mask, 3:, :3] = -0.5 * utils.skew3b(linear_part3b[mask])
+        intensity = intensity[mask_].reshape(-1, 1, 1)
+        ad_v = cls._combine_basecb(angular_partb[mask_], linear_part3b[mask_], "ad")
+        ad_v2 = ad_v @ ad_v
+        ad_v3 = ad_v2 @ ad_v
+        ad_v4 = ad_v2 @ ad_v2
+        c1 = (4 - intensity * np.sin(intensity) - 4 * np.cos(intensity)) / (
+            2 * intensity**2
+        )
+        c2 = (4 * intensity - 5 * np.sin(intensity) + intensity * np.cos(intensity)) / (
+            2 * intensity**3
+        )
+        c3 = (2 - intensity * np.sin(intensity) - 2 * np.cos(intensity)) / (
+            2 * intensity**4
+        )
+        c4 = (2 * intensity - 3 * np.sin(intensity) + intensity * np.cos(intensity)) / (
+            2 * intensity**5
+        )
+        right_jacobianb[mask_] += -c1 * ad_v + c2 * ad_v2 - c3 * ad_v3 + c4 * ad_v4
+        return right_jacobianb
+
+    @classmethod
+    def right_jacobianc(
+        cls, v: allowed_input_type_single, skip_check: bool = False
+    ) -> NDArray_6_6:
+        v = cls._check_shape_and_value(v, skip_check=skip_check)
+        angular_part = cls.angular_part_skewc(v, skip_check=True)
+        linear_part = cls.linear_part3c(v, skip_check=True)
+        return cls._right_jacobian_basec(angular_part, linear_part)
+
+    @classmethod
+    def right_jacobiancb(
+        cls, v: allowed_input_type_batch, skip_check: bool = False
+    ) -> NDArray_N_6_6:
+        v = cls._check_shapeb_and_valueb(v, skip_check=skip_check)
+        angular_part = cls.angular_part_skewcb(v, skip_check=True)
+        linear_part = cls.linear_part3cb(v, skip_check=True)
+        return cls._right_jacobian_basecb(angular_part, linear_part)
+
+    @property
+    def right_jacobian(self) -> Lie:
+        self_v = self._check_assigned()
+        return Lie(self.right_jacobianc(self_v, skip_check=True))
 
 
 class BasicLieGroup[
@@ -2514,6 +2791,44 @@ class LieGroup3[
             return result_type(v[0]), v[1]
         return result_type(v)
 
+    @classmethod
+    def left_jacobianc(
+        cls, v: allowed_input_type_single, skip_check: bool = False
+    ) -> NDArray_3_3:
+        so3_v = cls.logc(v, "so3", skip_check=skip_check)
+        return LieAlgebra3.left_jacobianc(so3_v, skip_check=True)
+
+    @classmethod
+    def left_jacobiancb(
+        cls, v: allowed_input_type_batch, skip_check: bool = False
+    ) -> NDArray_N_3_3:
+        so3_vb = cls.logcb(v, "so3", skip_check=skip_check)
+        return LieAlgebra3.left_jacobiancb(so3_vb, skip_check=True)
+
+    @property
+    def left_jacobian(self) -> Lie:
+        v = self._check_assigned()
+        return Lie(self.left_jacobianc(v, skip_check=True))
+
+    @classmethod
+    def right_jacobianc(
+        cls, v: allowed_input_type_single, skip_check: bool = False
+    ) -> NDArray_3_3:
+        so3_v = cls.logc(v, "so3", skip_check=skip_check)
+        return LieAlgebra3.right_jacobianc(so3_v, skip_check=True)
+
+    @classmethod
+    def right_jacobiancb(
+        cls, v: allowed_input_type_batch, skip_check: bool = False
+    ) -> NDArray_N_3_3:
+        so3_vb = cls.logcb(v, "so3", skip_check=skip_check)
+        return LieAlgebra3.right_jacobiancb(so3_vb, skip_check=True)
+
+    @property
+    def right_jacobian(self) -> Lie:
+        v = self._check_assigned()
+        return Lie(self.right_jacobianc(v, skip_check=True))
+
 
 @beartype
 class LieGroup[
@@ -2954,7 +3269,7 @@ class LieGroup[
     def logc(
         cls,
         v: allowed_input_type_single,
-        se3_or_Twist_or_ad_or_coad: Literal["se3"] = "se3",
+        logto: Literal["se3"] = "se3",
         return_intensity: Literal[False] = False,
         normalize: bool = False,
         skip_check: bool = False,
@@ -2965,7 +3280,7 @@ class LieGroup[
     def logc(
         cls,
         v: allowed_input_type_single,
-        se3_or_Twist_or_ad_or_coad: Literal["se3"] = "se3",
+        logto: Literal["se3"] = "se3",
         *,
         return_intensity: Literal[True],
         normalize: bool = False,
@@ -2977,7 +3292,7 @@ class LieGroup[
     def logc(
         cls,
         v: allowed_input_type_single,
-        se3_or_Twist_or_ad_or_coad: Literal["Twist"],
+        logto: Literal["Twist"],
         return_intensity: Literal[False] = False,
         normalize: bool = False,
         skip_check: bool = False,
@@ -2988,7 +3303,7 @@ class LieGroup[
     def logc(
         cls,
         v: allowed_input_type_single,
-        se3_or_Twist_or_ad_or_coad: Literal["Twist"],
+        logto: Literal["Twist"],
         return_intensity: Literal[True],
         normalize: bool = False,
         skip_check: bool = False,
@@ -2999,7 +3314,7 @@ class LieGroup[
     def logc(
         cls,
         v: allowed_input_type_single,
-        se3_or_Twist_or_ad_or_coad: Literal["ad", "coad"],
+        logto: Literal["ad", "coad"],
         return_intensity: Literal[False] = False,
         normalize: bool = False,
         skip_check: bool = False,
@@ -3010,7 +3325,7 @@ class LieGroup[
     def logc(
         cls,
         v: allowed_input_type_single,
-        se3_or_Twist_or_ad_or_coad: Literal["ad", "coad"],
+        logto: Literal["ad", "coad"],
         return_intensity: Literal[True],
         normalize: bool = False,
         skip_check: bool = False,
@@ -3020,7 +3335,7 @@ class LieGroup[
     def logc(
         cls,
         v: allowed_input_type_single,
-        se3_or_Twist_or_ad_or_coad: Literal["se3", "Twist", "ad", "coad"] = "se3",
+        logto: Literal["se3", "Twist", "ad", "coad"] = "se3",
         return_intensity: bool = False,
         normalize: bool = False,
         skip_check: bool = False,
@@ -3060,7 +3375,7 @@ class LieGroup[
             vee_v = vee_v * intensity
 
         v = LieAlgebra._combine_basec(  # type: ignore
-            skew_w, vee_v, se3_or_Twist_or_ad_or_coad, skip_check=True
+            skew_w, vee_v, logto, skip_check=True
         )
 
         if return_intensity:
@@ -3073,7 +3388,7 @@ class LieGroup[
     def logcb(
         cls,
         v: allowed_input_type_batch,
-        se3_or_Twist_or_ad_or_coad: Literal["se3"] = "se3",
+        logto: Literal["se3"] = "se3",
         return_intensity: Literal[False] = False,
         normalize: bool = False,
         skip_check: bool = False,
@@ -3084,7 +3399,7 @@ class LieGroup[
     def logcb(
         cls,
         v: allowed_input_type_batch,
-        se3_or_Twist_or_ad_or_coad: Literal["se3"] = "se3",
+        logto: Literal["se3"] = "se3",
         *,
         return_intensity: Literal[True],
         normalize: bool = False,
@@ -3096,7 +3411,7 @@ class LieGroup[
     def logcb(
         cls,
         v: allowed_input_type_batch,
-        se3_or_Twist_or_ad_or_coad: Literal["Twist"],
+        logto: Literal["Twist"],
         return_intensity: Literal[False] = False,
         normalize: bool = False,
         skip_check: bool = False,
@@ -3107,7 +3422,7 @@ class LieGroup[
     def logcb(
         cls,
         v: allowed_input_type_batch,
-        se3_or_Twist_or_ad_or_coad: Literal["Twist"],
+        logto: Literal["Twist"],
         *,
         return_intensity: Literal[True],
         normalize: bool = False,
@@ -3119,7 +3434,7 @@ class LieGroup[
     def logcb(
         cls,
         v: allowed_input_type_batch,
-        se3_or_Twist_or_ad_or_coad: Literal["ad", "coad"],
+        logto: Literal["ad", "coad"],
         return_intensity: Literal[False] = False,
         normalize: bool = False,
         skip_check: bool = False,
@@ -3130,7 +3445,7 @@ class LieGroup[
     def logcb(
         cls,
         v: allowed_input_type_batch,
-        se3_or_Twist_or_ad_or_coad: Literal["ad", "coad"],
+        logto: Literal["ad", "coad"],
         *,
         return_intensity: Literal[True],
         normalize: bool = False,
@@ -3141,7 +3456,7 @@ class LieGroup[
     def logcb(
         cls,
         v: allowed_input_type_batch,
-        se3_or_Twist_or_ad_or_coad: Literal["se3", "Twist", "ad", "coad"] = "se3",
+        logto: Literal["se3", "Twist", "ad", "coad"] = "se3",
         return_intensity: bool = False,
         normalize: bool = False,
         skip_check: bool = False,
@@ -3195,7 +3510,7 @@ class LieGroup[
             intensityb = intensityb.flatten()
 
         v = LieAlgebra._combine_basecb(  # type: ignore
-            skew_wb, vee_vb, se3_or_Twist_or_ad_or_coad, skip_check=True
+            skew_wb, vee_vb, logto, skip_check=True
         )
 
         if return_intensity:
@@ -3206,7 +3521,7 @@ class LieGroup[
     @overload
     def log(
         self,
-        se3_or_Twist_or_ad_or_coad: Literal["se3"] = "se3",
+        logto: Literal["se3"] = "se3",
         return_intensity: Literal[False] = False,
         normalize: bool = False,
     ) -> lieink.atoms.se3: ...
@@ -3214,7 +3529,7 @@ class LieGroup[
     @overload
     def log(
         self,
-        se3_or_Twist_or_ad_or_coad: Literal["se3"] = "se3",
+        logto: Literal["se3"] = "se3",
         *,
         return_intensity: Literal[True],
         normalize: bool = False,
@@ -3223,7 +3538,7 @@ class LieGroup[
     @overload
     def log(
         self,
-        se3_or_Twist_or_ad_or_coad: Literal["Twist"],
+        logto: Literal["Twist"],
         return_intensity: Literal[False] = False,
         normalize: bool = False,
     ) -> lieink.atoms.Twist: ...
@@ -3231,7 +3546,7 @@ class LieGroup[
     @overload
     def log(
         self,
-        se3_or_Twist_or_ad_or_coad: Literal["Twist"],
+        logto: Literal["Twist"],
         *,
         return_intensity: Literal[True],
         normalize: bool = False,
@@ -3240,7 +3555,7 @@ class LieGroup[
     @overload
     def log(
         self,
-        se3_or_Twist_or_ad_or_coad: Literal["ad"],
+        logto: Literal["ad"],
         return_intensity: Literal[False] = False,
         normalize: bool = False,
     ) -> lieink.atoms.ad: ...
@@ -3248,7 +3563,7 @@ class LieGroup[
     @overload
     def log(
         self,
-        se3_or_Twist_or_ad_or_coad: Literal["ad"],
+        logto: Literal["ad"],
         *,
         return_intensity: Literal[True],
         normalize: bool = False,
@@ -3257,7 +3572,7 @@ class LieGroup[
     @overload
     def log(
         self,
-        se3_or_Twist_or_ad_or_coad: Literal["coad"],
+        logto: Literal["coad"],
         return_intensity: Literal[False] = False,
         normalize: bool = False,
     ) -> lieink.atoms.coad: ...
@@ -3265,7 +3580,7 @@ class LieGroup[
     @overload
     def log(
         self,
-        se3_or_Twist_or_ad_or_coad: Literal["coad"],
+        logto: Literal["coad"],
         *,
         return_intensity: Literal[True],
         normalize: bool = False,
@@ -3273,7 +3588,7 @@ class LieGroup[
 
     def log(
         self,
-        se3_or_Twist_or_ad_or_coad: Literal["se3", "Twist", "ad", "coad"] = "se3",
+        logto: Literal["se3", "Twist", "ad", "coad"] = "se3",
         return_intensity: bool = False,
         normalize: bool = False,
     ) -> (
@@ -3292,12 +3607,12 @@ class LieGroup[
         self_v = self._check_assigned()
         v = logc_func(
             self_v,
-            se3_or_Twist_or_ad_or_coad,
+            logto,
             return_intensity,
             normalize,
             skip_check=True,
         )
-        result_type = check_operator_func("log", None)[se3_or_Twist_or_ad_or_coad]
+        result_type = check_operator_func("log", None)[logto]
         if return_intensity:
             return result_type(v[0]), v[1]
         return result_type(v)
@@ -3367,6 +3682,44 @@ class LieGroup[
         from lieink.atoms import coAd
 
         return coAd(self.tocoAdc(self_v, skip_check=True))
+
+    @classmethod
+    def left_jacobianc(
+        cls, v: allowed_input_type_single, skip_check: bool = False
+    ) -> NDArray_6_6:
+        se3_v = cls.logc(v, "se3", skip_check=skip_check)
+        return LieAlgebra.left_jacobianc(se3_v, skip_check=True)
+
+    @classmethod
+    def left_jacobiancb(
+        cls, v: allowed_input_type_batch, skip_check: bool = False
+    ) -> NDArray_N_6_6:
+        se3_vb = cls.logcb(v, "se3", skip_check=skip_check)
+        return LieAlgebra.left_jacobiancb(se3_vb, skip_check=True)
+
+    @property
+    def left_jacobian(self) -> Lie:
+        v = self._check_assigned()
+        return Lie(self.left_jacobianc(v, skip_check=True))
+
+    @classmethod
+    def right_jacobianc(
+        cls, v: allowed_input_type_single, skip_check: bool = False
+    ) -> NDArray_6_6:
+        se3_v = cls.logc(v, "se3", skip_check=skip_check)
+        return LieAlgebra.right_jacobianc(se3_v, skip_check=True)
+
+    @classmethod
+    def right_jacobiancb(
+        cls, v: allowed_input_type_batch, skip_check: bool = False
+    ) -> NDArray_N_6_6:
+        se3_vb = cls.logcb(v, "se3", skip_check=skip_check)
+        return LieAlgebra3.right_jacobiancb(se3_vb, skip_check=True)
+
+    @property
+    def right_jacobian(self) -> Lie:
+        v = self._check_assigned()
+        return Lie(self.right_jacobianc(v, skip_check=True))
 
 
 ALLOWED_OPERATORS: dict[
