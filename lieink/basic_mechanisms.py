@@ -43,7 +43,7 @@ class BasicSerialMechanism(ABC):
                 raise ValueError(f"Unsupported joint type: {joint_type}")
 
         self.kinematic_parameters = kinematic_parameters
-        self.joint_types = joint_types
+        self.joint_types = list(joint_types)
         self.joint_num = joint_num
 
     @abstractmethod
@@ -75,7 +75,7 @@ class BasicLimb(BasicSerialMechanism, ABC):
                 f"Joint actuation types length mismatch: expected {len(joint_types)}, got {len(joint_actuation_types)}"  # type: ignore
             )
         super().__init__(kinematic_parameters, joint_types)
-        self.joint_actuation_types = joint_actuation_types
+        self.joint_actuation_types = list(joint_actuation_types)
         self.mask_passive_joints = np.array(
             [
                 "P" in joint_actuation_type
