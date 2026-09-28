@@ -59,6 +59,7 @@ class Limb(BasicLimb, SerialMechanism):
         return constraint_wrenches.transpose(0, 2, 1)[..., None]
 
 
+@beartype
 class ParallelMechanism(BasicParallelMechanism[Limb]):
     def __init__(
         self,
@@ -559,6 +560,7 @@ class ParallelMechanism(BasicParallelMechanism[Limb]):
         return super().coordinate_poseb(poses, return_ctrls, max_iter, tol, dont_raise)
 
 
+@beartype
 class StewartPlate(ParallelMechanism):
     def __init__(
         self,
