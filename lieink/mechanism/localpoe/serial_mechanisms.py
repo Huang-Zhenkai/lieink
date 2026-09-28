@@ -2,6 +2,7 @@ from collections.abc import Iterable
 from typing import Literal, overload
 
 import numpy as np
+from beartype import beartype
 
 from lieink.annotations import (
     NDArray_1D,
@@ -18,6 +19,7 @@ from lieink.basic_mechanisms import BasicSerialMechanism
 from lieink.containers import LieContainer
 
 
+@beartype
 class SerialMechanism(BasicSerialMechanism):
     def __init__(
         self,
@@ -40,8 +42,8 @@ class SerialMechanism(BasicSerialMechanism):
         kinematic_parameters_SE3 = Twist.expcb(kinematic_parameters, 1, skip_check=True)
         kinematic_parameters_Ad = SE3.toAdcb(kinematic_parameters_SE3, skip_check=True)
 
-        joint_twists = np.zeros((self.jn, 6, 1))
-        for i, joint_type in enumerate(self.jts):
+        joint_twists = np.zeros((self.joint_num, 6, 1))
+        for i, joint_type in enumerate(self.joint_types):
             if joint_type == "R":
                 joint_twists[i, 2, 0] = 1
             else:
@@ -54,7 +56,7 @@ class SerialMechanism(BasicSerialMechanism):
     @overload
     def forward_kinematics(
         self,
-        control_parameter: NDArray_1D | Iterable,
+        ctrl: NDArray_1D | Iterable,
         return_vjacobian: Literal[False] = False,
         return_local_poses: Literal[False] = False,
         return_NDArray: Literal[False] = False,
@@ -63,7 +65,7 @@ class SerialMechanism(BasicSerialMechanism):
     @overload
     def forward_kinematics(
         self,
-        control_parameter: NDArray_1D | Iterable,
+        ctrl: NDArray_1D | Iterable,
         return_vjacobian: Literal[False] = False,
         return_local_poses: Literal[False] = False,
         return_NDArray: Literal[True] = True,
@@ -72,7 +74,7 @@ class SerialMechanism(BasicSerialMechanism):
     @overload
     def forward_kinematics(
         self,
-        control_parameter: NDArray_1D | Iterable,
+        ctrl: NDArray_1D | Iterable,
         return_vjacobian: Literal[False] = False,
         return_local_poses: Literal[True] = True,
         return_NDArray: Literal[False] = False,
@@ -81,7 +83,7 @@ class SerialMechanism(BasicSerialMechanism):
     @overload
     def forward_kinematics(
         self,
-        control_parameter: NDArray_1D | Iterable,
+        ctrl: NDArray_1D | Iterable,
         return_vjacobian: Literal[False] = False,
         return_local_poses: Literal[True] = True,
         return_NDArray: Literal[True] = True,
@@ -90,7 +92,7 @@ class SerialMechanism(BasicSerialMechanism):
     @overload
     def forward_kinematics(
         self,
-        control_parameter: NDArray_1D | Iterable,
+        ctrl: NDArray_1D | Iterable,
         return_vjacobian: Literal[True] = True,
         return_local_poses: Literal[False] = False,
         return_NDArray: Literal[False] = False,
@@ -99,7 +101,7 @@ class SerialMechanism(BasicSerialMechanism):
     @overload
     def forward_kinematics(
         self,
-        control_parameter: NDArray_1D | Iterable,
+        ctrl: NDArray_1D | Iterable,
         return_vjacobian: Literal[True] = True,
         return_local_poses: Literal[False] = False,
         return_NDArray: Literal[True] = True,
@@ -108,7 +110,7 @@ class SerialMechanism(BasicSerialMechanism):
     @overload
     def forward_kinematics(
         self,
-        control_parameter: NDArray_1D | Iterable,
+        ctrl: NDArray_1D | Iterable,
         return_vjacobian: Literal[True] = True,
         return_local_poses: Literal[True] = True,
         return_NDArray: Literal[False] = False,
@@ -117,7 +119,7 @@ class SerialMechanism(BasicSerialMechanism):
     @overload
     def forward_kinematics(
         self,
-        control_parameter: NDArray_1D | Iterable,
+        ctrl: NDArray_1D | Iterable,
         return_vjacobian: Literal[True] = True,
         return_local_poses: Literal[True] = True,
         return_NDArray: Literal[True] = True,
@@ -125,7 +127,7 @@ class SerialMechanism(BasicSerialMechanism):
 
     def forward_kinematics(
         self,
-        control_parameter: NDArray_1D | Iterable,
+        ctrl: NDArray_1D | Iterable,
         return_vjacobian: bool = False,
         return_local_poses: bool = False,
         return_NDArray: bool = False,
@@ -139,17 +141,17 @@ class SerialMechanism(BasicSerialMechanism):
         | tuple[NDArray_4_4, NDArray_N_6_1, NDArray_N_4_4]
     ):
 
-        control_parameter = np.asarray(control_parameter)
-        if control_parameter.shape[0] != self.jn:
+        ctrl = np.asarray(ctrl)
+        if ctrl.shape[0] != self.joint_num:
             raise ValueError(
-                f"control_parameter must have shape ({self.jn},), but control_parameter.shape[0] is {control_parameter.shape[0]}"
+                f"ctrl must have shape ({self.joint_num},), but ctrl.shape[0] is {ctrl.shape[0]}"
             )
-        joint_SE3 = Twist.expcb(self.joint_twists, control_parameter, skip_check=True)
-        local_poses = np.zeros((self.jn + 1, 4, 4))
+        joint_SE3 = Twist.expcb(self.joint_twists, ctrl, skip_check=True)
+        local_poses = np.zeros((self.joint_num + 1, 4, 4))
         local_poses[0] = np.eye(4)
         local_poses[1:, :, :] = self.kinematic_parameters_SE3[:-1] @ joint_SE3
 
-        for i in range(1, self.jn):
+        for i in range(1, self.joint_num):
             local_poses[i + 1] = local_poses[i] @ local_poses[i + 1]
         end_pose: NDArray_4_4 = local_poses[-1] @ self.kinematic_parameters_SE3[-1]
 
@@ -188,7 +190,7 @@ class SerialMechanism(BasicSerialMechanism):
     @overload
     def forward_kinematicsb(
         self,
-        control_parameters: Iterable[NDArray_1D | Iterable] | NDArray_2D,
+        ctrls: Iterable[NDArray_1D | Iterable] | NDArray_2D,
         return_vjacobian: Literal[False] = False,
         return_local_poses: Literal[False] = False,
     ) -> NDArray_N_4_4: ...
@@ -196,7 +198,7 @@ class SerialMechanism(BasicSerialMechanism):
     @overload
     def forward_kinematicsb(
         self,
-        control_parameters: Iterable[NDArray_1D | Iterable] | NDArray_2D,
+        ctrls: Iterable[NDArray_1D | Iterable] | NDArray_2D,
         return_vjacobian: Literal[True] = True,
         return_local_poses: Literal[False] = False,
     ) -> tuple[NDArray_N_4_4, NDArray_N_M_6_1]: ...
@@ -204,7 +206,7 @@ class SerialMechanism(BasicSerialMechanism):
     @overload
     def forward_kinematicsb(
         self,
-        control_parameters: Iterable[NDArray_1D | Iterable] | NDArray_2D,
+        ctrls: Iterable[NDArray_1D | Iterable] | NDArray_2D,
         return_vjacobian: Literal[False] = False,
         return_local_poses: Literal[True] = True,
     ) -> tuple[NDArray_N_4_4, NDArray_N_M_4_4]: ...
@@ -212,14 +214,14 @@ class SerialMechanism(BasicSerialMechanism):
     @overload
     def forward_kinematicsb(
         self,
-        control_parameters: Iterable[NDArray_1D | Iterable] | NDArray_2D,
+        ctrls: Iterable[NDArray_1D | Iterable] | NDArray_2D,
         return_vjacobian: Literal[True] = True,
         return_local_poses: Literal[True] = True,
     ) -> tuple[NDArray_N_4_4, NDArray_N_M_6_1, NDArray_N_M_4_4]: ...
 
     def forward_kinematicsb(
         self,
-        control_parameters: Iterable[NDArray_1D | Iterable] | NDArray_2D,
+        ctrls: Iterable[NDArray_1D | Iterable] | NDArray_2D,
         return_vjacobian: bool = False,
         return_local_poses: bool = False,
     ) -> (
@@ -228,19 +230,19 @@ class SerialMechanism(BasicSerialMechanism):
         | tuple[NDArray_N_4_4, NDArray_N_M_4_4]
         | tuple[NDArray_N_4_4, NDArray_N_M_6_1, NDArray_N_M_4_4]
     ):
-        control_parameters = np.asarray(control_parameters)
-        if control_parameters.shape[1] != self.jn:
+        ctrls = np.asarray(ctrls)
+        if ctrls.shape[1] != self.joint_num:
             raise ValueError(
-                f"control_parameters must have shape ({self.jn},), but control_parameters.shape[1] is {control_parameters.shape[1]}"
+                f"ctrls must have shape ({self.joint_num},), but ctrls.shape[1] is {ctrls.shape[1]}"
             )
 
-        data_num = control_parameters.shape[0]
-        local_poses: NDArray_N_M_4_4 = np.zeros((data_num, self.jn + 1, 4, 4))
+        data_num = ctrls.shape[0]
+        local_poses: NDArray_N_M_4_4 = np.zeros((data_num, self.joint_num + 1, 4, 4))
         local_poses[:, 0] = np.eye(4)
-        for i in range(self.jn):
+        for i in range(self.joint_num):
             joint_SE3 = Twist.expcb(
                 np.broadcast_to(self.joint_twists[i], (data_num, 6, 1)),
-                control_parameters[:, i],
+                ctrls[:, i],
             )
             local_poses[:, i + 1] = (
                 local_poses[:, i] @ self.kinematic_parameters_SE3[i] @ joint_SE3
@@ -250,8 +252,8 @@ class SerialMechanism(BasicSerialMechanism):
         )
 
         if return_vjacobian:
-            vjacobian: NDArray_N_M_6_1 = np.zeros((data_num, self.jn, 6, 1))
-            for i in range(self.jn):
+            vjacobian: NDArray_N_M_6_1 = np.zeros((data_num, self.joint_num, 6, 1))
+            for i in range(self.joint_num):
                 vjacobian[:, i] = (
                     SE3.toAdcb(local_poses[:, i + 1], skip_check=True)
                     @ self.joint_twists[i]

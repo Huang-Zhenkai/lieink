@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC
 from collections import UserList
 from collections.abc import Callable, Iterable
 from types import NotImplementedType
@@ -7,6 +8,7 @@ from typing import (
     Any,
     Self,
     TypeAliasType,
+    overload,
 )
 
 import numpy as np
@@ -19,9 +21,9 @@ from lieink import utils
 
 
 @beartype
-class BasicContainer[T](UserList[T]):
+class BasicContainer[T](UserList[T], ABC):
     @classmethod
-    def create_a_container(cls, instance: Any) -> Any:
+    def create_a_container(cls, instance: Any):
         content_type = utils.get_Type(instance)
         container_type = CONTAINER_TYPES.get(content_type)
         if container_type is None:
@@ -50,19 +52,17 @@ class BasicContainer[T](UserList[T]):
                 f"Container type {container_type} for content type {content_type} already exists."
             )
 
-    def __init__(
-        self, content: Iterable[T] | type[T] | T | TypeAliasType | None = None
-    ):
+    def __init__(self, content: T | Iterable[T] | type[T] | None = None):
         if "content_type" not in self.__dict__:
             self.content_type = None
         super().__init__(None)
         if isinstance(content, Iterable) and not isinstance(content, (str, np.ndarray)):
             content = list(content)  # type: ignore
             self.extend(content)
-        elif isinstance(content, (type, TypeAliasType)):
-            self.content_type = content
         elif content is None:
             pass
+        elif isinstance(content, type):
+            self.content_type = content
         else:
             self.append(content)  # type: ignore
 
@@ -101,12 +101,17 @@ class BasicContainer[T](UserList[T]):
         super().insert(index, item)
         return self
 
+    @overload
+    def __getitem__(self, index: int) -> T: ...
+    @overload
+    def __getitem__(self, index: slice) -> Self: ...
+
     def __getitem__(self, index: int | slice) -> T | Self:  # type: ignore
         if isinstance(index, slice):
             return self.mytype().extend(super().__getitem__(index))  # type: ignore
         return super().__getitem__(index)
 
-    def __setitem__(self, index: int | slice, value: Iterable[Any] | Any):  # type: ignore
+    def __setitem__(self, index: int | slice, value: Iterable[Any] | Any) -> None:  # type: ignore
         if isinstance(value, Iterable):
             value = [self._check_type(item) for item in value]  # type: ignore
         else:

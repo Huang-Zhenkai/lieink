@@ -917,7 +917,7 @@ class SE3(_LieGroup[NDArray_4_4, NDArray_4_4, NDArray_N_4_4, NDArray_N_4_4]):
     @classmethod
     def _check_valueb(cls, v: NDArray_N_4_4) -> NDArray_N_4_4:
         v = super()._check_valueb(v)
-        if utils.check_rotation_matrixb(v) is False:
+        if utils.check_rotation_matrixb(v[:, :3, :3]) is False:
             raise ValueError("v[:, :3, :3] is not rotation matrixb.")
         if utils.check_equal(v[:, 3, :3], 0) is False:
             raise ValueError("v[:, 3, :3] is not zero vector.")
@@ -937,6 +937,7 @@ class SE3(_LieGroup[NDArray_4_4, NDArray_4_4, NDArray_N_4_4, NDArray_N_4_4]):
     def invcb(cls, v: NDArray_N_4_4, skip_check: bool = False) -> NDArray_N_4_4:
         v = cls._check_shapeb_and_valueb(v, skip_check=skip_check)
         v_inv = np.zeros(v.shape)
+        v_inv[:,-1,-1] = 1
         v_inv[:, :3, :3] = v[:, :3, :3].transpose(0, 2, 1)
         v_inv[:, :3, 3:] = -v[:, :3, :3].transpose(0, 2, 1) @ v[:, :3, 3:]
         return v_inv

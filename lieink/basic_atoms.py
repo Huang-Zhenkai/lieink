@@ -54,7 +54,7 @@ class BasicLie[
     output_type_single: NDArray,
     allowed_input_type_batch: NDArray,
     output_type_batch: NDArray,
-]:
+](ABC):
     _r: int | None = None
     _c: int | None = None
     _v: output_type_single | None

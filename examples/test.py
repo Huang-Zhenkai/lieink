@@ -1,13 +1,15 @@
 import numpy as np
 
-from lieink.atoms import Twist
-from lieink.utils import print4
+from lieink.atoms import SE3, Twist
+from lieink.containers import Container
 
 x = np.random.random((6, 1))
 
-ljacobian = Twist.left_jacobiancb(x)
-rjacobian = Twist.right_jacobiancb(x)
+container = Container(Twist(x))
+container.print()
+l: Container[SE3] = container.exp(1)
+l.print()
 
-print4(ljacobian @ np.linalg.inv(rjacobian))
-print4(Twist.expcb(x, 1, expto="Ad"))
-
+x = np.random.random((3, 1))
+print(x)
+print(x.mean(axis=0))

@@ -15,22 +15,19 @@ from lieink.basic_containers import BasicContainer as _BasicContainer
 
 
 @beartype
-class Container(_BasicContainer[Any]):
+class Container[T](_BasicContainer[T]):
     def __init__(
         self,
-        content: Iterable[Any] | Any | None = None,
+        content: Iterable[T] | T| type[T] | None = None,
     ):
         super().__init__(content)  # type: ignore
 
 
 @beartype
-class LieContainer(_BasicContainer[_BasicLie[Any, Any, Any, Any]]):
+class LieContainer[T: _BasicLie[Any, Any, Any, Any]](_BasicContainer[T]):
     def __init__(
         self,
-        content: Iterable[_BasicLie[Any, Any, Any, Any]]
-        | _BasicLie[Any, Any, Any, Any]
-        | type[_BasicLie[Any, Any, Any, Any]]
-        | None = None,
+        content: Iterable[T] | T | type[T] | None = None,
     ):
         if isinstance(content, type):
             self.content_type = content
