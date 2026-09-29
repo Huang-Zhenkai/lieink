@@ -78,7 +78,7 @@ class SerialMechanism(BasicSerialMechanism):
         return_vjacobian: Literal[False] = False,
         return_local_poses: Literal[True] = True,
         return_NDArray: Literal[False] = False,
-    ) -> tuple[SE3, LieContainer]: ...
+    ) -> tuple[SE3, LieContainer[SE3]]: ...
 
     @overload
     def forward_kinematics(
@@ -96,7 +96,7 @@ class SerialMechanism(BasicSerialMechanism):
         return_vjacobian: Literal[True] = True,
         return_local_poses: Literal[False] = False,
         return_NDArray: Literal[False] = False,
-    ) -> tuple[SE3, LieContainer]: ...
+    ) -> tuple[SE3, LieContainer[Twist]]: ...
 
     @overload
     def forward_kinematics(
@@ -114,7 +114,7 @@ class SerialMechanism(BasicSerialMechanism):
         return_vjacobian: Literal[True] = True,
         return_local_poses: Literal[True] = True,
         return_NDArray: Literal[False] = False,
-    ) -> tuple[SE3, LieContainer, LieContainer]: ...
+    ) -> tuple[SE3, LieContainer[Twist], LieContainer[SE3]]: ...
 
     @overload
     def forward_kinematics(
@@ -133,8 +133,9 @@ class SerialMechanism(BasicSerialMechanism):
         return_NDArray: bool = False,
     ) -> (
         SE3
-        | tuple[SE3, LieContainer]
-        | tuple[SE3, LieContainer, LieContainer]
+        | tuple[SE3, LieContainer[Twist]]
+        | tuple[SE3, LieContainer[SE3]]
+        | tuple[SE3, LieContainer[Twist], LieContainer[SE3]]
         | NDArray_4_4
         | tuple[NDArray_4_4, NDArray_N_6_1]
         | tuple[NDArray_4_4, NDArray_N_4_4]

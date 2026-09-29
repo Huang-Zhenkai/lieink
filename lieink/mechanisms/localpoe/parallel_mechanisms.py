@@ -19,7 +19,7 @@ from lieink.annotations import (
 from lieink.atoms import SE3, SO3, Point3, Twist, Wrench
 from lieink.basic_mechanisms import BasicLimb, BasicParallelMechanism
 from lieink.containers import LieContainer
-from lieink.mechanism.localpoe.serial_mechanisms import SerialMechanism
+from lieink.mechanisms.localpoe.serial_mechanisms import SerialMechanism
 from lieink.utils import ATOL, NDArray_3Dto2D, NDArray_3Dto4D, find_zeros
 
 
