@@ -8,8 +8,10 @@ from beartype import beartype
 from lieink.annotations import (
     NDArray_1D,
     NDArray_2D,
+    NDArray_3_N,
     NDArray_4_4,
     NDArray_6_N,
+    NDArray_N_3_1,
     NDArray_N_4_4,
     NDArray_N_6_1,
     NDArray_N_M_6_1,
@@ -564,10 +566,10 @@ class ParallelMechanism(BasicParallelMechanism[Limb]):
 class StewartPlate(ParallelMechanism):
     def __init__(
         self,
-        lower_hinges_in_global_frame: NDArray_N_6_1
-        | NDArray_6_N
+        lower_hinges_in_global_frame: NDArray_N_3_1
+        | NDArray_3_N
         | LieContainer[Point3],
-        upper_hinges_in_end_frame: NDArray_N_6_1 | NDArray_6_N | LieContainer[Point3],
+        upper_hinges_in_end_frame: NDArray_N_3_1 | NDArray_3_N | LieContainer[Point3],
         initial_pose: SE3 | NDArray_4_4,
     ):
         if isinstance(initial_pose, SE3):
