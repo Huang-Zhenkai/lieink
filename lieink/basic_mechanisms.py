@@ -38,9 +38,15 @@ class BasicSerialMechanism(ABC):
             raise ValueError(
                 f"Kinematic parameters length mismatch: expected {joint_num + 1}, got {len(kinematic_parameters)}"
             )
+
         for joint_type in joint_types:
             if joint_type not in ["R", "P"]:
                 raise ValueError(f"Unsupported joint type: {joint_type}")
+        pjoint_num = joint_types.count("P")  # type: ignore
+        if pjoint_num > 3:
+            raise ValueError(
+                f"The maximum number of passive joints is 3, got {pjoint_num}"
+            )
 
         self.kinematic_parameters = kinematic_parameters
         self.joint_types = list(joint_types)
@@ -97,13 +103,7 @@ class BasicLimb(BasicSerialMechanism, ABC):
             ],
             dtype=bool,
         )
-        self.mask_measurable_joints = np.array(
-            [
-                "U" in joint_actuation_type
-                for joint_actuation_type in joint_actuation_types
-            ],
-            dtype=bool,
-        )
+        self.mask_unmeasurable_joints = np.logical_not(self.mask_measurable_joints)
 
 
 @beartype
@@ -217,7 +217,14 @@ class BasicParallelMechanism[T: BasicLimb](ABC):
     ) -> Any:
         ctrl = self.inverse_kinematics_ideal(pose, only_actuated_joints=False)
         return self.coordinate_pose_by_ctrl(
-            ctrl, return_ctrl, max_iter, tol, return_NDArray, dont_raise, *args, **kwargs
+            ctrl,
+            return_ctrl,
+            max_iter,
+            tol,
+            return_NDArray,
+            dont_raise,
+            *args,
+            **kwargs,
         )
 
     def coordinate_poseb(
