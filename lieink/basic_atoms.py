@@ -2004,7 +2004,8 @@ class LieAlgebra[
     def tose3c(
         cls, v: allowed_input_type_single, skip_check: bool = False
     ) -> NDArray_4_4:
-        angular_part = cls.angular_part_skewc(v, skip_check=skip_check)
+        v = cls._check_shape_and_value(v, skip_check=skip_check)
+        angular_part = cls.angular_part_skewc(v, skip_check=True)
         linear_part = cls.linear_part3c(v, skip_check=True)
         return cls._combine_basec(angular_part, linear_part, "se3", skip_check=True)
 
@@ -2012,7 +2013,8 @@ class LieAlgebra[
     def tose3cb(
         cls, v: allowed_input_type_batch, skip_check: bool = False
     ) -> NDArray_N_4_4:
-        angular_part = cls.angular_part_skewcb(v, skip_check=skip_check)
+        v = cls._check_shapeb_and_valueb(v, skip_check=skip_check)
+        angular_part = cls.angular_part_skewcb(v, skip_check=True)
         linear_part = cls.linear_part3cb(v, skip_check=True)
         return cls._combine_basecb(angular_part, linear_part, "se3", skip_check=True)
 
@@ -2026,7 +2028,8 @@ class LieAlgebra[
     def toTwistc(
         cls, v: allowed_input_type_single, skip_check: bool = False
     ) -> NDArray_6_1:
-        angular_part = cls.angular_part_skewc(v, skip_check=skip_check)
+        v = cls._check_shape_and_value(v, skip_check=skip_check)
+        angular_part = cls.angular_part_skewc(v, skip_check=True)
         linear_part = cls.linear_part3c(v, skip_check=True)
         return cls._combine_basec(angular_part, linear_part, "Twist", skip_check=True)
 
@@ -2034,7 +2037,8 @@ class LieAlgebra[
     def toTwistcb(
         cls, v: allowed_input_type_batch, skip_check: bool = False
     ) -> NDArray_N_6_1:
-        angular_part = cls.angular_part_skewcb(v, skip_check=skip_check)
+        v = cls._check_shapeb_and_valueb(v, skip_check=skip_check)
+        angular_part = cls.angular_part_skewcb(v, skip_check=True)
         linear_part = cls.linear_part3cb(v, skip_check=True)
         return cls._combine_basecb(angular_part, linear_part, "Twist", skip_check=True)
 
@@ -2048,7 +2052,8 @@ class LieAlgebra[
     def toadc(
         cls, v: allowed_input_type_single, skip_check: bool = False
     ) -> NDArray_6_6:
-        angular_part = cls.angular_part_skewc(v, skip_check=skip_check)
+        v = cls._check_shape_and_value(v, skip_check=skip_check)
+        angular_part = cls.angular_part_skewc(v, skip_check=True)
         linear_part = cls.linear_part3c(v, skip_check=True)
         return cls._combine_basec(angular_part, linear_part, "ad", skip_check=True)
 
@@ -2056,7 +2061,8 @@ class LieAlgebra[
     def toadcb(
         cls, v: allowed_input_type_batch, skip_check: bool = False
     ) -> NDArray_N_6_6:
-        angular_part = cls.angular_part_skewcb(v, skip_check=skip_check)
+        v = cls._check_shapeb_and_valueb(v, skip_check=skip_check)
+        angular_part = cls.angular_part_skewcb(v, skip_check=True)
         linear_part = cls.linear_part3cb(v, skip_check=True)
         return cls._combine_basecb(angular_part, linear_part, "ad", skip_check=True)
 
@@ -2070,7 +2076,8 @@ class LieAlgebra[
     def tocoadc(
         cls, v: allowed_input_type_single, skip_check: bool = False
     ) -> NDArray_6_6:
-        angular_part = cls.angular_part_skewc(v, skip_check=skip_check)
+        v = cls._check_shape_and_value(v, skip_check=skip_check)
+        angular_part = cls.angular_part_skewc(v, skip_check=True)
         linear_part = cls.linear_part3c(v, skip_check=True)
         return cls._combine_basec(angular_part, linear_part, "coad", skip_check=True)
 
@@ -2078,7 +2085,8 @@ class LieAlgebra[
     def tocoadcb(
         cls, v: allowed_input_type_batch, skip_check: bool = False
     ) -> NDArray_N_6_6:
-        angular_part = cls.angular_part_skewcb(v, skip_check=skip_check)
+        v = cls._check_shapeb_and_valueb(v, skip_check=skip_check)
+        angular_part = cls.angular_part_skewcb(v, skip_check=True)
         linear_part = cls.linear_part3cb(v, skip_check=True)
         return cls._combine_basecb(angular_part, linear_part, "coad", skip_check=True)
 
