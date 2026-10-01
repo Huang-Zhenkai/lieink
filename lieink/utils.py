@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -1181,3 +1182,23 @@ def NDArray_3Dto2D(
         blocks = array3D.reshape(row_num, col_num, r, c)
 
         return blocks.transpose(0, 2, 1, 3).reshape(row_num * r, col_num * c)
+
+
+def batch_func(func: Callable, key_paramters, *args, **kwargs):
+    key_paramters = np.asarray(key_paramters)
+
+    data_num = key_paramters.shape[0]
+    result_first = func(key_paramters[0], *args, **kwargs)
+    if isinstance(result_first, tuple):
+        results = [[result_first[i]] for i in range(len(result_first))]
+        for i in range(1, data_num):
+            result = func(key_paramters[i], *args, **kwargs)
+            for j in range(len(result_first)):
+                results[j].append(result[j])
+        return tuple(results)
+    else:
+        results = [result_first]
+        for i in range(1, data_num):
+            result = func(key_paramters[i], *args, **kwargs)
+            results.append(result)
+        return results

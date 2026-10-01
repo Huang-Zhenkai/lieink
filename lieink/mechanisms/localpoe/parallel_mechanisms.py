@@ -69,6 +69,16 @@ class ParallelMechanism(BasicParallelMechanism[Limb]):
         joint_types: Iterable[Iterable[str]],
         joint_actuation_types: Iterable[Iterable[str]],
     ):
+        if isinstance(kinematic_parameters[0], LieContainer):  # type: ignore
+            kinematic_parameters = [
+                kinematic_parameter.toNDArray_3D()  # type: ignore
+                for kinematic_parameter in kinematic_parameters
+            ]
+        else:
+            kinematic_parameters = [
+                Twist.reshapeb(kinematic_parameter)  # type: ignore
+                for kinematic_parameter in kinematic_parameters
+            ]
 
         super().__init__(Limb, kinematic_parameters, joint_types, joint_actuation_types)
 

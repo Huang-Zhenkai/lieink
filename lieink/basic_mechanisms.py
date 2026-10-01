@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from typing import Any
 
 import numpy as np
@@ -7,27 +7,7 @@ from beartype import beartype
 
 from lieink.annotations import NDArray_6_N, NDArray_N_6_1, RealScalar
 from lieink.containers import Container, LieContainer
-from lieink.utils import ATOL
-
-
-def batch_calculator(func: Callable, key_paramters, *args, **kwargs):
-    key_paramters = np.asarray(key_paramters)
-
-    data_num = key_paramters.shape[0]
-    result_first = func(key_paramters[0], *args, **kwargs)
-    if isinstance(result_first, tuple):
-        results = [[result_first[i]] for i in range(len(result_first))]
-        for i in range(1, data_num):
-            result = func(key_paramters[i], *args, **kwargs)
-            for j in range(len(result_first)):
-                results[j].append(result[j])
-        return tuple(results)
-    else:
-        results = [result_first]
-        for i in range(1, data_num):
-            result = func(key_paramters[i], *args, **kwargs)
-            results.append(result)
-        return results
+from lieink.utils import ATOL, batch_func
 
 
 @beartype
@@ -52,14 +32,20 @@ class BasicSerialMechanism(ABC):
         self.joint_types = list(joint_types)
         self.joint_num = joint_num
 
+    @property
+    def kinematic_parameters(self):
+        return self._kinematic_parameters
+
+    @kinematic_parameters.setter
+    def kinematic_parameters(self, value: Any):
+        self._kinematic_parameters = value
+
     @abstractmethod
     def forward_kinematics(self, control_parameter: Any) -> Any:
         raise NotImplementedError
 
     def forward_kinematicsb(self, control_parameters: Any, *args, **kwargs) -> Any:
-        return batch_calculator(
-            self.forward_kinematics, control_parameters, *args, **kwargs
-        )
+        return batch_func(self.forward_kinematics, control_parameters, *args, **kwargs)
 
 
 @beartype
@@ -121,12 +107,6 @@ class BasicParallelMechanism[T: BasicLimb](ABC):
                 f"Joint types and joint actuation types length mismatch: expected {limb_num}, got {len(joint_types)} and {len(joint_actuation_types)}"  # type: ignore
             )
 
-        joint_num = sum(1 for sub in joint_types for _ in sub)
-        mask_passive_joints = np.zeros(joint_num, dtype=bool)
-        mask_measurable_joints = np.zeros(joint_num, dtype=bool)
-        mask_actuated_joints = np.zeros(joint_num, dtype=bool)
-        count = 0
-
         limb_container = Container(limb_type)
         for i in range(limb_num):
             limb = limb_type(  # type: ignore
@@ -135,6 +115,28 @@ class BasicParallelMechanism[T: BasicLimb](ABC):
                 joint_actuation_types[i],  # type: ignore
             )
             limb_container.append(limb)  # type: ignore
+
+        self.limbs = limb_container
+
+    @property
+    def limbs(self):
+        return self._limbs
+
+    @limbs.setter
+    def limbs(self, value: Container[T] | list[T]):
+
+        if not isinstance(value, Container):
+            value = Container[T](value)
+
+        limb_num = len(value)
+        count = 0
+        joint_num = sum(limb.joint_num for limb in value)
+        mask_passive_joints = np.zeros(joint_num, dtype=bool)
+        mask_measurable_joints = np.zeros(joint_num, dtype=bool)
+        mask_actuated_joints = np.zeros(joint_num, dtype=bool)
+
+        for i in range(limb_num):
+            limb = value[i]
             mask_passive_joints[count : count + limb.joint_num] = (
                 limb.mask_passive_joints
             )
@@ -146,12 +148,35 @@ class BasicParallelMechanism[T: BasicLimb](ABC):
             )
             count += limb.joint_num
 
-        self.limbs = limb_container
-        self.limb_num = limb_num
-        self.mask_passive_joints = mask_passive_joints
-        self.mask_measurable_joints = mask_measurable_joints
-        self.mask_actuated_joints = mask_actuated_joints
-        self.joint_num = joint_num
+        if "limb_num" in self.__dict__:
+            if self.limb_num != limb_num:
+                raise ValueError(
+                    f"Limb number mismatch: expected {self.limb_num}, got {limb_num}"
+                )
+            elif self.mask_measurable_joints != mask_measurable_joints:
+                raise ValueError(
+                    f"Measurable joint mask mismatch: expected {self.mask_measurable_joints}, got {mask_measurable_joints}"
+                )
+            elif self.mask_passive_joints != mask_passive_joints:
+                raise ValueError(
+                    f"Passive joint mask mismatch: expected {self.mask_passive_joints}, got {mask_passive_joints}"
+                )
+            elif self.mask_actuated_joints != mask_actuated_joints:
+                raise ValueError(
+                    f"Actuated joint mask mismatch: expected {self.mask_actuated_joints}, got {mask_actuated_joints}"
+                )
+            elif self.joint_num != joint_num:
+                raise ValueError(
+                    f"Joint number mismatch: expected {self.joint_num}, got {joint_num}"
+                )
+
+        else:
+            self._limbs = value
+            self.limb_num = limb_num
+            self.mask_passive_joints = mask_passive_joints
+            self.mask_measurable_joints = mask_measurable_joints
+            self.mask_actuated_joints = mask_actuated_joints
+            self.joint_num = joint_num
 
     def inverse_kinematics_ideal(
         self, pose: Any, only_actuated_joints: bool = True, *args, **kwargs
@@ -165,7 +190,7 @@ class BasicParallelMechanism[T: BasicLimb](ABC):
         *args,
         **kwargs,
     ) -> Any:
-        return batch_calculator(
+        return batch_func(
             self.inverse_kinematics_ideal, poses, only_actuated_joints, *args, **kwargs
         )
 
@@ -193,7 +218,7 @@ class BasicParallelMechanism[T: BasicLimb](ABC):
         **kwargs,
     ) -> Any:
         kwargs["return_NDArray"] = False
-        return batch_calculator(
+        return batch_func(
             self.coordinate_pose_by_ctrl,
             ctrls,
             return_ctrls,

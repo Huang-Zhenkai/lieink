@@ -27,20 +27,7 @@ class SerialMechanism(BasicSerialMechanism):
         joint_types: Iterable[str],
     ):
 
-        if isinstance(kinematic_parameters, LieContainer):
-            if kinematic_parameters.content_type == Twist:
-                kinematic_parameters = kinematic_parameters.toNDArray_3D()
-            else:
-                raise ValueError(
-                    f"Unsupported content type: {kinematic_parameters.content_type}"
-                )
-        else:
-            kinematic_parameters = Twist.reshapeb(kinematic_parameters)
-
         super().__init__(kinematic_parameters, joint_types)
-
-        kinematic_parameters_SE3 = Twist.expcb(kinematic_parameters, 1, skip_check=True)
-        kinematic_parameters_Ad = SE3.toAdcb(kinematic_parameters_SE3, skip_check=True)
 
         joint_twists = np.zeros((self.joint_num, 6, 1))
         for i, joint_type in enumerate(self.joint_types):
@@ -50,8 +37,26 @@ class SerialMechanism(BasicSerialMechanism):
                 joint_twists[i, 5, 0] = 1
 
         self.joint_twists = joint_twists
-        self.kinematic_parameters_SE3 = kinematic_parameters_SE3
-        self.kinematic_parameters_Ad = kinematic_parameters_Ad
+
+    @property
+    def kinematic_parameters(self):
+        return self._kinematic_parameters
+
+    @kinematic_parameters.setter
+    def kinematic_parameters(self, value: NDArray_N_6_1 | NDArray_6_N | LieContainer):
+        if isinstance(value, LieContainer):
+            if value.content_type == Twist:
+                value = value.toNDArray_3D()
+            else:
+                raise ValueError(f"Unsupported content type: {value.content_type}")
+        else:
+            value = Twist.reshapeb(value)
+
+        self._kinematic_parameters = value
+        self.kinematic_parameters_SE3 = Twist.expcb(value, 1, skip_check=True)
+        self.kinematic_parameters_Ad = SE3.toAdcb(
+            self.kinematic_parameters_SE3, skip_check=True
+        )
 
     @overload
     def forward_kinematics(
