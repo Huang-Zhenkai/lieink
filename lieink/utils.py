@@ -667,7 +667,7 @@ def check_coAd_matrixb(
 
     if check_equal(coAd_matrixb[:, :3, :3], coAd_matrixb[:, 3:, 3:]) is False:
         return False
-    if check_rotation_matrix(coAd_matrixb[:, :3, :3]) is False:
+    if check_rotation_matrixb(coAd_matrixb[:, :3, :3]) is False:
         return False
 
     skew3tb = np.einsum(  # type: ignore

@@ -77,8 +77,8 @@ class LieContainer[T: _BasicLie[Any, Any, Any, Any]](_BasicContainer[T]):
                     result.append(it)  # type: ignore
                 else:
                     if (
-                        self.content_type._r == items._r  # type: ignore
-                        and self.content_type._c == items._c  # type: ignore
+                        self.content_type._r == it._r  # type: ignore
+                        and self.content_type._c == it._c  # type: ignore
                     ):
                         result.append(it.v)  # type: ignore
                     else:
