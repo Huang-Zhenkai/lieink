@@ -1,3 +1,4 @@
+from abc import ABC
 from collections.abc import Iterable
 from typing import Literal, overload
 
@@ -62,7 +63,7 @@ class Limb(BasicLimb, SerialMechanism):
 
 
 @beartype
-class ParallelMechanism(BasicParallelMechanism[Limb]):
+class ParallelMechanism(BasicParallelMechanism[Limb], ABC):
     def __init__(
         self,
         kinematic_parameters: Iterable[NDArray_N_6_1 | NDArray_6_N | LieContainer],
@@ -512,8 +513,9 @@ class ParallelMechanism(BasicParallelMechanism[Limb]):
         | tuple[NDArray_4_4, bool]
         | tuple[NDArray_4_4, list[NDArray_1D], bool]
     ):
-        return super().coordinate_pose(
-            pose, return_ctrl, max_iter, tol, return_NDArray, dont_raise
+        ctrl = self.inverse_kinematics(pose, only_actuated_joints=False)
+        return self.coordinate_pose_by_ctrl(
+            ctrl, return_ctrl, max_iter, tol, return_NDArray, dont_raise
         )
 
     @overload
@@ -569,7 +571,10 @@ class ParallelMechanism(BasicParallelMechanism[Limb]):
         | tuple[NDArray_N_4_4, NDArrayBool_1D]
         | tuple[NDArray_N_4_4, list[list[NDArray_1D]], NDArrayBool_1D]
     ):
-        return super().coordinate_poseb(poses, return_ctrls, max_iter, tol, dont_raise)
+        ctrls = self.inverse_kinematicsb(poses, only_actuated_joints=False)
+        return self.coordinate_pose_by_ctrlb(
+            ctrls, return_ctrls, max_iter, tol, dont_raise
+        )
 
 
 @beartype
@@ -680,7 +685,7 @@ class StewartPlate(ParallelMechanism):
         self._R3to0 = np.linalg.inv(S0to3)[:, :3, :3]
         self._R4 = S4[:, :3, :3]
 
-    def inverse_kinematics_ideal(
+    def inverse_kinematics(
         self, pose: SE3 | NDArray_4_4, only_actuated_joints: bool = True
     ) -> list[NDArray_1D]:
 
@@ -744,7 +749,7 @@ class StewartPlate(ParallelMechanism):
 
         return [q for q in qs]
 
-    def inverse_kinematics_idealb(
+    def inverse_kinematicsb(
         self, pose: NDArray_N_4_4, only_actuated_joints: bool = True
     ) -> list[list[NDArray_1D]]:
 

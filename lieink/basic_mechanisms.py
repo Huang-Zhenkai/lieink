@@ -5,9 +5,9 @@ from typing import Any
 import numpy as np
 from beartype import beartype
 
-from lieink.annotations import NDArray_6_N, NDArray_N_6_1, RealScalar
+from lieink.annotations import NDArray_6_N, NDArray_N_6_1
 from lieink.containers import Container, LieContainer
-from lieink.utils import ATOL, batch_func
+from lieink.utils import batch_func
 
 
 @beartype
@@ -41,11 +41,11 @@ class BasicSerialMechanism(ABC):
         self._kinematic_parameters = value
 
     @abstractmethod
-    def forward_kinematics(self, control_parameter: Any) -> Any:
+    def forward_kinematics(self, ctrl: Any) -> Any:
         raise NotImplementedError
 
-    def forward_kinematicsb(self, control_parameters: Any, *args, **kwargs) -> Any:
-        return batch_func(self.forward_kinematics, control_parameters, *args, **kwargs)
+    def forward_kinematicsb(self, ctrls: Any, *args, **kwargs) -> Any:
+        return batch_func(self.forward_kinematics, ctrls, *args, **kwargs)
 
 
 @beartype
@@ -178,12 +178,13 @@ class BasicParallelMechanism[T: BasicLimb](ABC):
             self.mask_actuated_joints = mask_actuated_joints
             self.joint_num = joint_num
 
-    def inverse_kinematics_ideal(
+    @abstractmethod
+    def inverse_kinematics(
         self, pose: Any, only_actuated_joints: bool = True, *args, **kwargs
     ) -> Any:
         raise NotImplementedError
 
-    def inverse_kinematics_idealb(
+    def inverse_kinematicsb(
         self,
         poses: Any,
         only_actuated_joints: bool = True,
@@ -191,79 +192,5 @@ class BasicParallelMechanism[T: BasicLimb](ABC):
         **kwargs,
     ) -> Any:
         return batch_func(
-            self.inverse_kinematics_ideal, poses, only_actuated_joints, *args, **kwargs
-        )
-
-    def coordinate_pose_by_ctrl(
-        self,
-        ctrl: Any,
-        return_ctrl: bool = False,
-        max_iter: int = 100,
-        tol: RealScalar = ATOL,
-        return_NDArray: bool = False,
-        dont_raise: bool = False,
-        *args,
-        **kwargs,
-    ) -> Any:
-        raise NotImplementedError
-
-    def coordinate_pose_by_ctrlb(
-        self,
-        ctrls: Any,
-        return_ctrls: bool = False,
-        max_iter: int = 100,
-        tol: RealScalar = ATOL,
-        dont_raise: bool = False,
-        *args,
-        **kwargs,
-    ) -> Any:
-        kwargs["return_NDArray"] = False
-        return batch_func(
-            self.coordinate_pose_by_ctrl,
-            ctrls,
-            return_ctrls,
-            max_iter,
-            tol,
-            dont_raise,
-            *args,
-            **kwargs,
-        )
-
-    def coordinate_pose(
-        self,
-        pose: Any,
-        return_ctrl: bool = False,
-        max_iter: int = 100,
-        tol: RealScalar = ATOL,
-        return_NDArray: bool = False,
-        dont_raise: bool = False,
-        *args,
-        **kwargs,
-    ) -> Any:
-        ctrl = self.inverse_kinematics_ideal(pose, only_actuated_joints=False)
-        return self.coordinate_pose_by_ctrl(
-            ctrl,
-            return_ctrl,
-            max_iter,
-            tol,
-            return_NDArray,
-            dont_raise,
-            *args,
-            **kwargs,
-        )
-
-    def coordinate_poseb(
-        self,
-        poses: Any,
-        return_ctrls: bool = False,
-        max_iter: int = 100,
-        tol: RealScalar = ATOL,
-        dont_raise: bool = False,
-        *args,
-        **kwargs,
-    ) -> Any:
-
-        ctrls = self.inverse_kinematics_idealb(poses, only_actuated_joints=False)
-        return self.coordinate_pose_by_ctrlb(
-            ctrls, return_ctrls, max_iter, tol, dont_raise, *args, **kwargs
+            self.inverse_kinematics, poses, only_actuated_joints, *args, **kwargs
         )
