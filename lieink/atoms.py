@@ -335,7 +335,7 @@ class Point4(
             other_v = other_v / other_v[3]
             new_v = self_v + other_v
             new_v[-1] = 1
-            return Point4(self_v + other_v)
+            return Point4(new_v)
         else:
             return super().__add__(other)
 
@@ -458,7 +458,7 @@ class Point4(
 
         v = cls.normalizec(v, skip_check=skip_check)
         vector4_v = np.zeros((4, 1))
-        vector4_v[:3] = v
+        vector4_v[:3] = v[:3]
         if normalize:
             vector4_v = Vector4.normalizec(vector4_v, skip_check=True)
         return vector4_v
@@ -473,7 +473,7 @@ class Point4(
 
         v = cls.normalizecb(v, skip_check=skip_check)
         vector4_v = np.zeros((v.shape[0], 4, 1))
-        vector4_v[:, :3] = v
+        vector4_v[:, :3] = v[:, :3]
         if normalize:
             vector4_v = Vector4.normalizecb(vector4_v, skip_check=True)
         return vector4_v
