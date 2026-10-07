@@ -135,6 +135,8 @@ class BasicParallelMechanism[T: BasicLimb](ABC):
         mask_measurable_joints = np.zeros(joint_num, dtype=bool)
         mask_actuated_joints = np.zeros(joint_num, dtype=bool)
 
+        constraint_num = 0
+
         for i in range(limb_num):
             limb = value[i]
             mask_passive_joints[count : count + limb.joint_num] = (
@@ -147,6 +149,16 @@ class BasicParallelMechanism[T: BasicLimb](ABC):
                 limb.mask_actuated_joints
             )
             count += limb.joint_num
+            constraint_num += 6 - (np.sum(limb.mask_passive_joints))
+
+        if constraint_num > 6:
+            raise ValueError(
+                f"Constraint number mismatch: expected 6, got {constraint_num}, which means the defined mechanism is an OVERCONSTRAINED mechanism."
+            )
+        elif constraint_num < 6:
+            raise ValueError(
+                f"Constraint number mismatch: expected 6, got {constraint_num}, which means the defined mechanism is an UNDERCONSTRAINED mechanism."
+            )
 
         if "limb_num" in self.__dict__:
             if self.limb_num != limb_num:
