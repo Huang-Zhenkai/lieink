@@ -2640,10 +2640,19 @@ class LieGroup3[
         cos_intensity = (np.trace(v) - 1) / 2
         cos_intensity = np.clip(cos_intensity, -1, 1)
         intensity = np.arccos(cos_intensity)
+
         if utils.check_equal(intensity, 0) is not False:
             v = np.zeros((3, 3))  # type: ignore
+        elif utils.check_equal(intensity, np.pi) is not False:  # type: ignore
+            A = (v + np.eye(3)) / 2.0
+            k = int(np.argmax(np.diag(A)))
+            axis = A[:, k] / np.sqrt(A[k, k])
+            if axis[np.argmax(np.abs(axis))] < 0:
+                axis = -axis
+            v = utils.skew3(axis)  # type: ignore
         else:
             v = (v - v.T) / (2 * np.sin(intensity))
+
         if normalize is False:
             v = v * intensity
         if so3_or_Twist3 == "so3":
@@ -2723,24 +2732,53 @@ class LieGroup3[
 
         intensity = np.arccos(cos_intensity)
 
-        mask = utils.find_zeros(intensity)
-        mask_ = np.logical_not(mask)
         ws = np.zeros((v.shape[0], 3, 3))
 
-        if mask_.any():
-            ws[mask_] = (v[mask_] - v[mask_].transpose(0, 2, 1)) / (
-                2 * np.sin(intensity[mask_].reshape(-1, 1, 1))
-            )
-            if normalize is False:
-                ws = ws * intensity.reshape(-1, 1, 1)
+        mask_zero = utils.find_zeros(intensity)
+        mask_pi = utils.find_zeros(np.pi - intensity)
+        mask_gen = np.logical_not(np.logical_or(mask_zero, mask_pi))
+
+        # 一般情形
+        if mask_gen.any():
+            v_gen = v[mask_gen]
+            s = np.sin(intensity[mask_gen]).reshape(-1, 1, 1)
+            ws[mask_gen] = (v_gen - v_gen.transpose(0, 2, 1)) / (2 * s)
+
+        # θ ≈ π：用 (v + I)/2 = ω̂ω̂^T 提取轴
+        if mask_pi.any():
+            v_pi = v[mask_pi]
+            A = (v_pi + np.eye(3)) / 2.0  # (M, 3, 3)
+            diag = np.diagonal(A, axis1=1, axis2=2)  # (M, 3)
+            k = np.argmax(diag, axis=1)  # (M,)
+            rows = np.arange(A.shape[0])
+            sqrt_d = np.sqrt(np.maximum(diag[rows, k], 1e-30))
+            axis = A[rows, k, :] / sqrt_d[:, None]  # (M, 3) 单位轴
+
+            # 默认符号：最大绝对值分量为正
+            imax = np.argmax(np.abs(axis), axis=1)
+            sgn = np.sign(axis[rows, imax])
+            sgn[sgn == 0] = 1.0
+            axis *= sgn[:, None]
+
+            ax, ay, az = axis[:, 0], axis[:, 1], axis[:, 2]
+            ws_pi = np.zeros((axis.shape[0], 3, 3))
+            ws_pi[:, 0, 1] = -az
+            ws_pi[:, 0, 2] = ay
+            ws_pi[:, 1, 0] = az
+            ws_pi[:, 1, 2] = -ax
+            ws_pi[:, 2, 0] = -ay
+            ws_pi[:, 2, 1] = ax
+            ws[mask_pi] = ws_pi
+
+        if normalize is False:
+            ws = ws * intensity.reshape(-1, 1, 1)
 
         if so3_or_Twist3 != "so3":
             ws = utils.veeskew3b(ws)
 
         if return_intensity:
             return ws, intensity
-        else:
-            return ws
+        return ws
 
     @overload
     def log(

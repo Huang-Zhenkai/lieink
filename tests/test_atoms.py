@@ -1,6 +1,6 @@
 import numpy as np
 
-from lieink.atoms import Point4, SO3, Twist
+from lieink.atoms import SO3, Point4, Twist
 
 
 def test_point4_addition_returns_normalized_homogeneous_point():
@@ -26,7 +26,9 @@ def test_so3_rotation_log_roundtrip():
 
     logarithm = rotation.log("so3")
 
-    np.testing.assert_allclose(logarithm.v, [[0.0, -angle, 0.0], [angle, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    np.testing.assert_allclose(
+        logarithm.v, [[0.0, -angle, 0.0], [angle, 0.0, 0.0], [0.0, 0.0, 0.0]]
+    )
 
 
 def test_twist_exp_log_roundtrip():

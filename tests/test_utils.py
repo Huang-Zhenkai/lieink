@@ -22,7 +22,7 @@ def test_se3_and_adjoint_conversions_roundtrip():
     transform[:3, :3] = utils.rot3c("y", 0.3)
     transform[:3, 3:] = twist[3:]
     adjoint = utils.SE3_matrix_to_Ad_matrix(transform)
-    checked, recovered = utils.check_Ad_matrix(adjoint, return_t=True)
+    checked, recovered = utils.check_Ad_matrix(adjoint, return_t=True)  # type: ignore
     np.testing.assert_allclose(checked, adjoint)
     np.testing.assert_allclose(recovered, twist[3:])
 
@@ -36,6 +36,6 @@ def test_batch_coadjoint_validation_accepts_valid_matrices():
     transforms[:, 3, 3] = 1.0
     coadjoint = utils.SE3_matrixb_to_coAd_matrixb(transforms)
 
-    result, recovered = utils.check_coAd_matrixb(coadjoint, return_t=True)
+    result, recovered = utils.check_coAd_matrixb(coadjoint, return_t=True)  # type: ignore
     np.testing.assert_allclose(result, coadjoint)
     np.testing.assert_allclose(recovered, translations)
