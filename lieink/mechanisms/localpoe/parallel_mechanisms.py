@@ -11,19 +11,25 @@ from lieink.annotations import (
     NDArray_2D,
     NDArray_3_N,
     NDArray_4_4,
+    NDArray_4D,
     NDArray_6_N,
     NDArray_N_3_1,
+    NDArray_N_3_3,
     NDArray_N_4_4,
     NDArray_N_6_1,
     NDArray_N_M_6_1,
     NDArrayBool_1D,
     RealScalar,
 )
-from lieink.atoms import SE3, SO3, Point3, Twist, Wrench
+from lieink.atoms import SE3, SO3, Point3, Twist, Vector3, Wrench
 from lieink.basic_mechanisms import BasicLimb, BasicParallelMechanism
 from lieink.containers import LieContainer
 from lieink.mechanisms.localpoe.serial_mechanisms import SerialMechanism
-from lieink.utils import ATOL, NDArray_3Dto2D, NDArray_3Dto4D, find_zeros
+from lieink.utils import (
+    ATOL,
+    NDArray_3Dto2D,
+    NDArray_4Dto3D,
+)
 
 
 @beartype
@@ -578,235 +584,273 @@ class ParallelMechanism(BasicParallelMechanism[Limb], ABC):
 
 
 @beartype
-class StewartPlate(ParallelMechanism):
+class BasicStewartPlate(ParallelMechanism, ABC):
     def __init__(
         self,
-        lower_hinges_in_global_frame: NDArray_N_3_1
+        lower_joint_center_in_global_frame: NDArray_N_3_1
         | NDArray_3_N
         | LieContainer[Point3],
-        upper_hinges_in_end_frame: NDArray_N_3_1 | NDArray_3_N | LieContainer[Point3],
+        upper_joint_center_in_global_frame: NDArray_N_3_1
+        | NDArray_3_N
+        | LieContainer[Point3],
         initial_pose: SE3 | NDArray_4_4,
+        z1s_in_global_frame: NDArray_N_3_1 | NDArray_3_N | LieContainer[Vector3],
+        z6s_in_global_frame: NDArray_N_3_1 | NDArray_3_N | LieContainer[Vector3],
     ):
+
+        if isinstance(lower_joint_center_in_global_frame, LieContainer):
+            ljc_g = lower_joint_center_in_global_frame.toNDArray_3D()  # type: ignore
+        else:
+            ljc_g = Point3.reshapeb(lower_joint_center_in_global_frame)  # type: ignore
+        if isinstance(upper_joint_center_in_global_frame, LieContainer):
+            ujc_g = upper_joint_center_in_global_frame.toNDArray_3D()  # type: ignore
+        else:
+            ujc_g = Point3.reshapeb(upper_joint_center_in_global_frame)  # type: ignore
+        if isinstance(initial_pose, SE3):
+            initial_pose = initial_pose.v
+        else:
+            initial_pose = SE3._check_shape_and_value(initial_pose)
+        z1s = z1s_in_global_frame
+        z6s = z6s_in_global_frame
+        if isinstance(z1s, LieContainer):
+            z1s = z1s.toNDArray_3D()
+        else:
+            z1s = Vector3.reshapeb(z1s)
+        z1s /= np.linalg.norm(z1s, axis=1, keepdims=True)
+        if isinstance(z6s, LieContainer):
+            z6s = z6s.toNDArray_3D()
+        else:
+            z6s = Vector3.reshapeb(z6s)
+        z6s /= np.linalg.norm(z6s, axis=1, keepdims=True)
+        z6s_e = initial_pose[:3, :3].T @ z6s
+
+        ls = ujc_g - ljc_g
+        initial_length = np.linalg.norm(ls, axis=1)
+        ls = ls / initial_length.reshape(-1, 1, 1)
+        ls_e = initial_pose[:3, :3].T @ ls
+
+        zs = np.zeros((6, 7, 3, 1))
+        zs[:, 0] = z1s
+        zs[:, 1] = np.cross(z1s.squeeze(-1), ls.squeeze(-1))[..., None]
+        zs[:, 1] /= np.linalg.norm(zs[:, 1], axis=1, keepdims=True)
+        zs[:, 2] = ls
+        zs[:, 3] = ls
+        zs[:, 4] = np.cross(ls.squeeze(-1), z6s.squeeze(-1))[..., None]
+        zs[:, 4] /= np.linalg.norm(zs[:, 4], axis=1, keepdims=True)
+        zs[:, 5] = z6s
+
+        Rs = np.zeros((6, 7, 3, 3))
+        for i in range(6):
+            if i == 0:
+                x, y = self._calculate_rotX_and_rotYb(zs[:, i])
+                Rs[:, i] = SO3.rotxcb(x) @ SO3.rotycb(y)
+            else:
+                x, y = self._calculate_rotX_and_rotYb(
+                    SO3.invcb(Rs[:, i - 1]) @ zs[:, i]
+                )
+                Rs[:, i] = Rs[:, i - 1] @ SO3.rotxcb(x) @ SO3.rotycb(y)
+
+        Rs[:, 6] = initial_pose[:3, :3]
+
+        ts = self.calculate_initial_ts(ljc_g, ujc_g, initial_pose)
+        poses = np.zeros((6, 7, 4, 4))
+        poses[:, :, -1, -1] = 1.0
+        poses[:, :, :3, :3] = Rs
+        poses[:, :, :3, -1:] = ts
+
+        kpss = np.zeros((6, 7, 6, 1))
+        for i in range(7):
+            if i == 0:
+                kps = SE3.logcb(poses[:, i], logto="Twist")
+            else:
+                kps = SE3.logcb(SE3.invcb(poses[:, i - 1]) @ poses[:, i], logto="Twist")
+            kpss[:, i] = kps
+
+        if self.config == "SPS":  # type: ignore 这个不做了吧，反正没用上
+            joint_type = ["R", "R", "R", "P", "R", "R"]
+            joint_actuated = ["UMP", "UMP", "UMP", "A", "UMP", "UMP"]
+        else:
+            joint_type = ["R", "R", "P", "R", "R", "R"]
+            joint_actuated = ["UMP", "UMP", "A", "UMP", "UMP", "UMP"]
+
+        super().__init__(kpss, [joint_type] * 6, [joint_actuated] * 6)
+
+        Rs_ljc = self._calculate_R_by_X_Yb(z1s, zs[:, 1])
+        initial_q1, initial_q2 = self._calculate_rotX_and_rotYb(SO3.invcb(Rs_ljc) @ ls)
+
+        Rs_ujc = self._calculate_R_by_X_Yb(
+            z6s_e, np.cross(z6s_e.squeeze(-1), ls_e.squeeze(-1)).reshape(-1, 3, 1)
+        )
+        initial_q6, initial_q5 = self._calculate_rotX_and_rotYb(
+            SO3.invcb(Rs_ujc) @ ls_e
+        )
+
+        cos_q4 = np.sum(zs[:, 1] * zs[:, 4], axis=1).flatten()
+        sin_q4 = np.sum(
+            np.cross(zs[:, 1].squeeze(-1), zs[:, 4].squeeze(-1)) * ls.squeeze(-1),
+            axis=-1,
+        )
+        initial_q4 = np.arctan2(sin_q4, cos_q4)
+
+        self.ljc_g = Point3.toPoint4cb(ljc_g)
+        self.ujc_e = SE3.invc(initial_pose) @ Point3.toPoint4cb(ujc_g)
+
+        self.z1s_g = z1s
+        self.z6s_e = z6s_e
+
+        self.initial_q1s = initial_q1
+        self.initial_q2s = initial_q2
+        self.initial_q3s = initial_length.flatten()
+        self.initial_q4s = initial_q4
+        self.initial_q5s = initial_q5
+        self.initial_q6s = initial_q6
+
+        self.Rs_ljc_T = SO3.invcb(Rs_ljc)
+        self.Rs_ujc_T = SO3.invcb(Rs_ujc)
+
+    def calculate_initial_ts(
+        self,
+        ljc_g: NDArray_N_3_1,
+        ujc_g: NDArray_N_3_1,
+        initial_pose: NDArray_4_4,
+    ) -> NDArray_4D:
+
+        ts = np.zeros((6, 7, 3, 1))
+
+        ts[:, 0] = ljc_g
+        ts[:, 1] = ljc_g
+        ts[:, 2] = ljc_g
+        ts[:, 4] = ujc_g
+        ts[:, 5] = ujc_g
+        ts[:, 6] = initial_pose[:3, -1:]
+        if self.config == "UPS" or self.config == "SPS":  # type: ignore
+            ts[:, 3] = ujc_g
+        else:
+            ts[:, 3] = ljc_g
+
+        return ts
+
+    def inverse_kinematics(self, pose: NDArray_4_4, only_actuated_joints: bool = True):
+        pose = SE3._check_shape_and_value(pose).reshape(-1, 4, 4)
+        return self.inverse_kinematicsb(pose, only_actuated_joints)[0]
+
+    def inverse_kinematicsb(
+        self, poses: NDArray_N_4_4, only_actuated_joints: bool = True
+    ):
+
+        poses = SE3._check_shapeb_and_valueb(poses)
+
+        data_num = poses.shape[0]
+        ujc_g = np.einsum("nij,mjk->nmik", poses, self.ujc_e)
+        ls = (ujc_g - self.ljc_g)[:, :, :-1]
+        length = np.linalg.norm(ls, axis=2).squeeze(-1)
+
+        if only_actuated_joints:
+            return length - self.initial_q3s
+
+        ls /= length.reshape(-1, 6, 1, 1)
+
+        qs = np.zeros((data_num, 6, 6))
+        qs[:, :, 2] = length - self.initial_q3s
+
+        ls_ljc = self.Rs_ljc_T @ ls
+        q1s, q2s = self._calculate_rotX_and_rotYb(NDArray_4Dto3D(ls_ljc))
+        qs[:, :, 0] = q1s.reshape(data_num, -1) - self.initial_q1s
+        qs[:, :, 1] = q2s.reshape(data_num, -1) - self.initial_q2s
+
+        ls_ujc = self.Rs_ujc_T @ (poses[:, None, :3, :3].swapaxes(-1, -2) @ ls)
+        q6s, q5s = self._calculate_rotX_and_rotYb(NDArray_4Dto3D(ls_ujc))
+        qs[:, :, 4] = q5s.reshape(data_num, -1) - self.initial_q5s
+        qs[:, :, 5] = -(q6s.reshape(data_num, -1) - self.initial_q6s)
+
+        z6s_g = poses[:, None, :3, :3] @ self.z6s_e
+        ls_3d = ls.squeeze(-1)
+
+        z2s_g = np.cross(self.z1s_g.squeeze(-1), ls_3d)
+        z5s_g = np.cross(ls_3d, z6s_g.squeeze(-1))
+
+        z2s_g /= np.linalg.norm(z2s_g, axis=-1, keepdims=True)
+        z5s_g /= np.linalg.norm(z5s_g, axis=-1, keepdims=True)
+
+        cos_q4 = np.sum(z2s_g * z5s_g, axis=-1)
+        sin_q4 = np.sum(np.cross(z2s_g, z5s_g) * ls_3d, axis=-1)
+        q4 = np.arctan2(sin_q4, cos_q4)
+
+        qs[:, :, 3] = (q4 - self.initial_q4s + np.pi) % (2 * np.pi) - np.pi
+
+        return qs
+
+    def _calculate_rotX_and_rotYb(self, zb):
+
+        norm = np.linalg.norm(zb, axis=1, keepdims=True)
+        zb = zb / norm
+
+        zx, zy, zz = zb[:, 0, 0], zb[:, 1, 0], zb[:, 2, 0]
+        r = np.hypot(zy, zz)
+
+        x = np.arctan2(zy, -zz)
+        y = np.arctan2(zx, -r)
+
+        return x, y
+
+    def _calculate_R_by_X_Yb(
+        self, Xs: NDArray_N_3_1, Ys: NDArray_N_3_1
+    ) -> NDArray_N_3_3:
+
+        n = Xs.shape[0]
+        Rs = np.zeros((n, 3, 3))
+        Rs[:, :, 0:1] = Xs
+        Rs[:, :, 0] /= np.linalg.norm(Rs[:, :, 0], axis=1, keepdims=True)
+        Rs[:, :, 1:2] = Ys
+        Rs[:, :, 1] /= np.linalg.norm(Rs[:, :, 1], axis=1, keepdims=True)
+        Rs[:, :, 2] = np.cross(Rs[:, :, 0], Rs[:, :, 1])
+        Rs[:, :, 2] /= np.linalg.norm(Rs[:, :, 2], axis=1, keepdims=True)
+
+        return Rs
+
+
+@beartype
+class StewartPlate_UCU(BasicStewartPlate):
+    config = "UCU"
+
+
+@beartype
+class StewartPlate_UPS(BasicStewartPlate):
+    config = "UPS"
+
+    def __init__(
+        self,
+        lower_joint_center_in_global_frame: NDArray_N_3_1
+        | NDArray_3_N
+        | LieContainer[Point3],
+        upper_joint_center_in_global_frame: NDArray_N_3_1
+        | NDArray_3_N
+        | LieContainer[Point3],
+        initial_pose: SE3 | NDArray_4_4,
+        z1s_in_global_frame: NDArray_N_3_1 | NDArray_3_N | LieContainer[Vector3],
+    ):
+
         if isinstance(initial_pose, SE3):
             initial_pose = initial_pose.v
         else:
             initial_pose = SE3._check_shape_and_value(initial_pose)
 
-        lhs_g = np.zeros((6, 4, 1))
-        lhs_g[:, -1] = 1
-        uhs_e = np.zeros((6, 4, 1))
-        uhs_e[:, -1] = 1
-
-        if isinstance(lower_hinges_in_global_frame, LieContainer):
-            lower_hinges_in_global_frame = lower_hinges_in_global_frame.toNDArray_3D()
+        z1s = z1s_in_global_frame
+        if isinstance(z1s, LieContainer):
+            z1s = z1s.toNDArray_3D()
         else:
-            lower_hinges_in_global_frame = Point3.reshapeb(lower_hinges_in_global_frame)
-        if isinstance(upper_hinges_in_end_frame, LieContainer):
-            upper_hinges_in_end_frame = upper_hinges_in_end_frame.toNDArray_3D()
-        else:
-            upper_hinges_in_end_frame = Point3.reshapeb(upper_hinges_in_end_frame)
-
-        lhs_g[:, :3] = lower_hinges_in_global_frame
-        uhs_e[:, :3] = upper_hinges_in_end_frame
-
-        uhs_g = np.einsum("ij,njk->nik", initial_pose, uhs_e)
-        initial_ls_vector = (uhs_g - lhs_g)[:, :3]
-        initial_ls_length = np.linalg.norm(initial_ls_vector, axis=1)
-
-        kpss = np.zeros((6, 6, 7))
-
-        Zs = np.einsum("nij,nj->nij", initial_ls_vector, 1 / initial_ls_length)
-
-        Xs = np.zeros(Zs.shape)
-        Xs[:, 0] = -Zs[:, 1]
-        Xs[:, 1] = Zs[:, 0]
-        Xs = np.einsum("nij,nj->nij", Xs, 1 / np.linalg.norm(Xs, axis=1))
-        Ys = np.cross(Zs.reshape(6, 3), Xs.reshape(6, 3), axis=1).reshape(6, 3, 1)
-
-        S1s = np.zeros((6, 4, 4))
-        S1s[:, :3, 0:1] = -Ys
-        S1s[:, :3, 1:2] = -Zs
-        S1s[:, :3, 2:3] = Xs
-        S1s[:, :, 3:] = lhs_g
-        rho1 = SE3.logcb(S1s, logto="Twist")
-        kpss[:, :, 0:1] = rho1
-
-        S2s = np.zeros((6, 4, 4))
-        S2s[:] = SE3.rotyc(-np.pi / 2)
-        rho2 = SE3.logcb(S2s, logto="Twist")
-        kpss[:, :, 1:2] = rho2
-
-        S3s = np.zeros((6, 4, 4))
-        S3s[:] = SE3.rotxc(np.pi / 2)
-        rho3 = SE3.logcb(S3s, logto="Twist")
-        kpss[:, :, 2:3] = rho3
-
-        S0to3 = np.einsum("nij,njk->nik", S1s, S2s)
-        S0to3 = np.einsum("nij,njk->nik", S0to3, S3s)
-
-        S0to4 = np.zeros((6, 4, 4))
-        S0to4[:, 1, 0] = -1
-        S0to4[:, 2, 1] = -1
-        S0to4[:, 0, 2] = 1
-        S0to4[:, :, -1:] = uhs_g
-
-        S4 = np.einsum("nij,njk->nik", np.linalg.inv(S0to3), S0to4)
-        rho4 = SE3.logcb(S4, logto="Twist")
-        kpss[:, :, 3:4] = rho4
-
-        S5 = SE3.rotyc(-np.pi / 2)
-        rho5 = SE3.logc(S5, logto="Twist")
-        kpss[:, :, 4:5] = rho5
-
-        S6 = SE3.rotxc(np.pi / 2)
-        rho6 = SE3.logc(S6, logto="Twist")
-        kpss[:, :, 5:6] = rho6
-
-        S0to6 = np.einsum("nij,jk->nik", S0to4, S5)
-        S0to6 = np.einsum("nij,jk->nik", S0to6, S6)
-
-        S7 = np.einsum("nij,jk->nik", np.linalg.inv(S0to6), initial_pose)
-        rho7 = SE3.logcb(S7, logto="Twist")
-        kpss[:, :, 6:7] = rho7
-        kpss = [Twist.reshapeb(kps) for kps in kpss]
+            z1s = Vector3.reshapeb(z1s)
+        z1s /= np.linalg.norm(z1s, axis=1, keepdims=True)
+        z6s_e = z1s[[3, 4, 5, 0, 1, 2]]
+        z6s = initial_pose[:3, :3] @ z6s_e
 
         super().__init__(
-            kpss,
-            [["R", "R", "P", "R", "R", "R"]] * 6,
-            [["UMP", "UMP", "A", "UMP", "UMP", "UMP"]] * 6,
+            lower_joint_center_in_global_frame,
+            upper_joint_center_in_global_frame,
+            initial_pose,
+            z1s,
+            z6s,
         )
 
-        self.lhs_g = lhs_g
-        self.uhs_e = uhs_e
-        self.initial_ls_length = initial_ls_length
-        self.initial_ls_vector_norm = Zs
 
-        self._R0to3 = S0to3[:, :3, :3]
-        self._R3to0 = np.linalg.inv(S0to3)[:, :3, :3]
-        self._R4 = S4[:, :3, :3]
-
-    def inverse_kinematics(
-        self, pose: SE3 | NDArray_4_4, only_actuated_joints: bool = True
-    ) -> list[NDArray_1D]:
-
-        if isinstance(pose, SE3):
-            pose = pose.v
-        else:
-            pose = SE3._check_shape_and_value(pose)
-
-        uhs_g = np.einsum("ij,njk->nik", pose, self.uhs_e)
-        ls_vector = (uhs_g - self.lhs_g)[:, :-1]
-        ls_length = np.linalg.norm(ls_vector, axis=1)
-        ls_vector_norm = np.einsum("nij,nj->nij", ls_vector, 1 / ls_length)
-
-        qs = np.zeros((6, 6))
-        qs[:, 2:3] = ls_length - self.initial_ls_length
-
-        ls_vector_norm_in_S3 = np.einsum("nij,njk->nik", self._R3to0, ls_vector_norm)
-
-        theta2 = np.arcsin(ls_vector_norm_in_S3[:, 0])
-        cos_theta2 = np.cos(theta2)
-        theta1 = np.arctan2(
-            ls_vector_norm_in_S3[:, 1] / (-cos_theta2),
-            ls_vector_norm_in_S3[:, 2] / cos_theta2,
-        )
-
-        qs[:, 0:1] = theta1
-        qs[:, 1:2] = theta2
-
-        R1 = SO3.rotxcb(theta1.flatten())
-        R2 = SO3.rotycb(theta2.flatten())
-
-        R0to3 = np.einsum("nij,njk->nik", self._R0to3, R1)
-        R0to3 = np.einsum("nij,njk->nik", R0to3, R2)
-        R0to4 = np.einsum("nij,njk->nik", R0to3, self._R4)
-
-        R4to7 = np.einsum("nij,jk->nik", np.linalg.inv(R0to4), pose[:3, :3])
-
-        sin_theta5 = R4to7[:, 2, 2]
-        theta5 = np.arcsin(sin_theta5)
-        cos_theta5 = np.cos(theta5)
-
-        theta6 = np.zeros(6)
-        theta4 = np.zeros(6)
-
-        mask = np.logical_not(find_zeros(cos_theta5))
-        cos_theta5 = cos_theta5[mask]
-        cos_theta6 = R4to7[mask, 2, 0] / cos_theta5
-        sin_theta6 = -R4to7[mask, 2, 1] / cos_theta5
-        theta6[mask] = np.arctan2(sin_theta6, cos_theta6)
-
-        cos_theta4 = -R4to7[:, 1, 2] / cos_theta5
-        sin_theta4 = R4to7[:, 0, 2] / cos_theta5
-        theta4[mask] = np.arctan2(sin_theta4, cos_theta4)
-
-        qs[:, 3] = theta4
-        qs[:, 4] = theta5
-        qs[:, 5] = theta6
-
-        if only_actuated_joints:
-            qs = qs[:, 2:3]
-
-        return [q for q in qs]
-
-    def inverse_kinematicsb(
-        self, pose: NDArray_N_4_4, only_actuated_joints: bool = True
-    ) -> list[list[NDArray_1D]]:
-
-        pose = SE3._check_shapeb_and_valueb(pose)
-        data_num = pose.shape[0]
-
-        uhs_g = np.einsum("nij,mjk->nmik", pose, self.uhs_e)
-        ls_vector = (uhs_g - self.lhs_g)[:, :, :-1]
-        ls_length = np.linalg.norm(ls_vector, axis=2)
-        ls_vector_norm = np.einsum("nmij,nmj->nmij", ls_vector, 1 / ls_length)
-
-        qs = np.zeros((data_num, 6, 6))
-        qs[:, :, 2:3] = ls_length - self.initial_ls_length
-
-        ls_vector_norm_in_S3 = np.einsum("mij,nmjk->nmik", self._R3to0, ls_vector_norm)
-
-        theta2 = np.arcsin(ls_vector_norm_in_S3[:, :, 0])
-        cos_theta2 = np.cos(theta2)
-        theta1 = np.arctan2(
-            ls_vector_norm_in_S3[:, :, 1] / (-cos_theta2),
-            ls_vector_norm_in_S3[:, :, 2] / cos_theta2,
-        )
-
-        qs[:, :, 0:1] = theta1
-        qs[:, :, 1:2] = theta2
-
-        R1 = NDArray_3Dto4D(SO3.rotxcb(theta1.flatten()), shape=(data_num, -1))
-        R2 = NDArray_3Dto4D(SO3.rotycb(theta2.flatten()), shape=(data_num, -1))
-
-        R0to3 = np.einsum("mij,nmjk->nmik", self._R0to3, R1)
-        R0to3 = np.einsum("nmij,nmjk->nmik", R0to3, R2)
-        R0to4 = np.einsum("nmij,mjk->nmik", R0to3, self._R4)
-
-        R4to7 = np.einsum("nmij,njk->nmik", np.linalg.inv(R0to4), pose[:, :3, :3])
-
-        sin_theta5 = R4to7[:, :, 2, 2]
-        theta5 = np.arcsin(sin_theta5)
-        cos_theta5 = np.cos(theta5)
-
-        theta6 = np.zeros((data_num, 6))
-        theta4 = np.zeros((data_num, 6))
-
-        mask = np.logical_not(find_zeros(cos_theta5))
-        cos_theta5 = cos_theta5[mask]
-        cos_theta6 = R4to7[mask, 2, 0] / cos_theta5
-        sin_theta6 = -R4to7[mask, 2, 1] / cos_theta5
-        theta6[mask] = np.arctan2(sin_theta6, cos_theta6)
-
-        cos_theta4 = -R4to7[:, :, 1, 2].flatten() / cos_theta5
-        sin_theta4 = R4to7[:, :, 0, 2].flatten() / cos_theta5
-        theta4[mask] = np.arctan2(sin_theta4, cos_theta4)
-
-        qs[:, :, 3] = theta4
-        qs[:, :, 4] = theta5
-        qs[:, :, 5] = theta6
-
-        if only_actuated_joints:
-            qs = qs[:, :, 2:3]
-
-        return [[q_i for q_i in q] for q in qs]
+StewartPlate = StewartPlate_UPS
